@@ -34,7 +34,7 @@ describe("repairableError", () => {
 })
 
 describe("toCsv", () => {
-  it("uses Turkish Excel conventions without losing precision", () => {
+  it("uses Turkish Excel conventions and rounds money to the cent", () => {
     const csv = toCsv(
       [
         { key: "k", label: "Şehir", format: "text", total: false },
@@ -45,7 +45,7 @@ describe("toCsv", () => {
         { k: 'A;"B"', v: null },
       ],
     )
-    expect(csv).toBe('Şehir;Ciro\r\nİstanbul;1234567,891\r\n"A;""B""";')
+    expect(csv).toBe('Şehir;Ciro\r\nİstanbul;1234567,89\r\n"A;""B""";')
   })
 })
 
@@ -61,5 +61,39 @@ describe("toTsv", () => {
         [{ k: "İstanbul", v: 1250.5 }],
       ),
     ).toBe("Şehir\tCiro\r\nİstanbul\t1250,5")
+  })
+})
+
+describe("CSV export safety and precision", () => {
+  const cols = [
+    { key: "k", label: "Ad", format: "text" as const, total: false },
+    { key: "m", label: "Ciro", format: "currency" as const, total: true },
+    { key: "a", label: "Ortalama", format: "number" as const, total: false },
+    { key: "n", label: "Adet", format: "integer" as const, total: true },
+    { key: "p", label: "Pay", format: "percent" as const, total: false },
+  ]
+  it("rounds money to the cent and keeps other formats readable", () => {
+    expect(toCsv(cols, [{ k: "x", m: 3965.1034482759, a: 2.3342989571, n: 1726, p: 51.946186157 }])).toBe(
+      "Ad;Ciro;Ortalama;Adet;Pay\r\nx;3965,1;2,3343;1726;51,95",
+    )
+  })
+  it("neutralizes cells a spreadsheet would run as formulas", () => {
+    const csv = toCsv(cols.slice(0, 1), [{ k: "=HYPERLINK(1)" }, { k: "+1" }, { k: "-x" }, { k: "@a" }, { k: "Normal" }])
+    expect(csv.split("\r\n").slice(1)).toEqual(["'=HYPERLINK(1)", "'+1", "'-x", "'@a", "Normal"])
+  })
+  it("never touches real numbers, including negatives", () => {
+    expect(toCsv(cols.slice(1, 2), [{ m: -450.5 }]).split("\r\n")[1]).toBe("-450,5")
+  })
+})
+
+describe("chunked CSV builder", () => {
+  it("produces exactly the same text as the synchronous one across chunk boundaries", async () => {
+    const { toDelimitedAsync } = await import("@/lib/export")
+    const cols = [
+      { key: "k", label: "Ad", format: "text" as const, total: false },
+      { key: "v", label: "Tutar", format: "currency" as const, total: true },
+    ]
+    const rows = Array.from({ length: 12_345 }, (_, i) => ({ k: i % 7 === 0 ? `=x${i}` : `ü;${i}`, v: i * 1.005 }))
+    expect(await toDelimitedAsync(cols, rows, ";", "tr")).toBe(toCsv(cols, rows, "tr"))
   })
 })

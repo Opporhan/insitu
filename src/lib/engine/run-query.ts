@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { CHUNK_ROWS, yieldToBrowser } from "@/lib/schedule"
 import { ResultRow } from "@/lib/schema"
 import { currentDb } from "./duckdb"
 import { guardSql } from "./guard"
@@ -14,7 +15,10 @@ export type QueryResult =
 const Rows = z.array(ResultRow)
 const Described = z.array(z.object({ column_name: z.string(), column_type: z.string() }))
 
-export async function runQuery(sql: string): Promise<QueryResult> {
+/** Upper bound for "export everything" so a runaway query cannot exhaust browser memory. */
+export const MAX_EXPORT_ROWS = 1_000_000
+
+export async function runQuery(sql: string, maxRows = MAX_RESULT_ROWS): Promise<QueryResult> {
   const guarded = guardSql(sql)
   if (!guarded.ok) return { ok: false, error: guarded.error, repairable: guarded.error }
 
@@ -26,11 +30,18 @@ export async function runQuery(sql: string): Promise<QueryResult> {
     if (!normalized.ok) return { ok: false, error: normalized.error, repairable: normalized.error }
 
     // One extra row tells us whether the result was cut off.
-    const table = await conn.query(`${normalized.sql} LIMIT ${MAX_RESULT_ROWS + 1}`)
-    const parsed = Rows.safeParse(table.toArray().map((r) => r.toJSON()))
-    if (!parsed.success) return { ok: false, error: "The query returned rows in an unexpected shape.", repairable: null }
-    const complete = parsed.data.length <= MAX_RESULT_ROWS
-    return { ok: true, rows: parsed.data.slice(0, MAX_RESULT_ROWS), columns: columns.map((c) => c.name), complete }
+    const table = await conn.query(`${normalized.sql} LIMIT ${maxRows + 1}`)
+    // Arrow → JS objects in chunks, yielding between them, so large exports never freeze the page.
+    const rows: ResultRow[] = []
+    for (let start = 0; start < table.numRows; start += CHUNK_ROWS) {
+      const chunk = table.slice(start, Math.min(table.numRows, start + CHUNK_ROWS))
+      const parsed = Rows.safeParse(chunk.toArray().map((r) => r.toJSON()))
+      if (!parsed.success) return { ok: false, error: "The query returned rows in an unexpected shape.", repairable: null }
+      rows.push(...parsed.data)
+      if (start + CHUNK_ROWS < table.numRows) await yieldToBrowser()
+    }
+    const complete = rows.length <= maxRows
+    return { ok: true, rows: rows.slice(0, maxRows), columns: columns.map((c) => c.name), complete }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     return { ok: false, error: message, repairable: repairableError(message) }

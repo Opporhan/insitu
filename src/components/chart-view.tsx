@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useRef } from "react"
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, Pie, PieChart, XAxis, YAxis } from "recharts"
 import { useI18n } from "@/components/i18n-provider"
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
@@ -9,6 +10,18 @@ import type { OutputColumn, ResultValue } from "@/lib/schema"
 import type { ResultView, Series } from "@/lib/result-view"
 
 const PALETTE = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)", "var(--chart-7)", "var(--chart-8)"] as const
+
+/**
+ * SVG colors are set directly on each element, never through CSS classes: the PNG
+ * exporter (html-to-image) copies SVG markup as-is, so class-based colors are lost
+ * and Recharts' defaults (#808080 labels, #ccc grid) would appear in the image.
+ */
+const INK = { strong: "var(--foreground)", muted: "var(--muted-foreground)", grid: "var(--border)" } as const
+const STRONG_TICK = { fill: INK.strong, style: { fill: INK.strong } }
+const MUTED_TICK = { fill: INK.muted, style: { fill: INK.muted } }
+
+/** If an animation-end event never arrives (e.g. a background tab), still unlock export. */
+const READY_FALLBACK_MS = 4000
 
 export function seriesColor(i: number): string {
   return PALETTE[i % PALETTE.length] ?? PALETTE[0]
@@ -83,11 +96,35 @@ function PieTooltip({ active, payload, value, locale }: TooltipProps & { value: 
   )
 }
 
-type Props = { view: Extract<ResultView, { kind: "bar" | "line" | "pie" }> }
+type Props = {
+  view: Extract<ResultView, { kind: "bar" | "line" | "pie" }>
+  /** Called once every series has finished drawing, so an export never catches a half-drawn chart. */
+  onReady?: () => void
+}
 
-export function ChartView({ view }: Props) {
+export function ChartView({ view, onReady }: Props) {
   const { t, locale } = useI18n()
   const animate = !prefersReducedMotion()
+  const seriesCount = view.kind === "pie" ? 1 : view.series.length
+  const finished = useRef(0)
+  const readyRef = useRef(onReady)
+  useEffect(() => {
+    readyRef.current = onReady
+  })
+
+  useEffect(() => {
+    if (!animate) {
+      readyRef.current?.()
+      return
+    }
+    const timer = setTimeout(() => readyRef.current?.(), READY_FALLBACK_MS)
+    return () => clearTimeout(timer)
+  }, [animate])
+
+  const onAnimationEnd = () => {
+    finished.current += 1
+    if (finished.current >= seriesCount) readyRef.current?.()
+  }
 
   if (view.kind === "pie") {
     const config: ChartConfig = Object.fromEntries(view.slices.map((s, i) => [s.name, { label: s.name, color: seriesColor(i) }]))
@@ -97,7 +134,17 @@ export function ChartView({ view }: Props) {
         <ChartContainer config={config} className="mx-auto aspect-square h-[300px] w-full max-w-[300px]">
           <PieChart accessibilityLayer>
             <ChartTooltip content={<PieTooltip value={view.value} locale={locale} />} />
-            <Pie data={data} dataKey="value" nameKey="name" innerRadius="58%" outerRadius="100%" strokeWidth={2} stroke="var(--card)" isAnimationActive={animate}>
+            <Pie
+              data={data}
+              dataKey="value"
+              nameKey="name"
+              innerRadius="58%"
+              outerRadius="100%"
+              strokeWidth={2}
+              stroke="var(--card)"
+              isAnimationActive={animate}
+              onAnimationEnd={onAnimationEnd}
+            >
               {data.map((s) => (
                 <Cell key={s.name} fill={s.fill} />
               ))}
@@ -132,7 +179,7 @@ export function ChartView({ view }: Props) {
     return (
       <ChartContainer config={config} className="aspect-auto w-full" style={{ height: Math.max(220, data.length * rowHeight + (multi ? 56 : 24)) }}>
         <BarChart data={data} layout="vertical" margin={{ left: 4, right: multi ? 16 : 84 }} accessibilityLayer>
-          <CartesianGrid horizontal={false} />
+          <CartesianGrid horizontal={false} stroke={INK.grid} />
           <YAxis
             dataKey="x"
             type="category"
@@ -142,15 +189,22 @@ export function ChartView({ view }: Props) {
             tickFormatter={xTick}
             interval={0}
             // Category names are the content here, not scaffolding: full-contrast text.
-            // Inline style beats the container's muted tick color.
-            tick={{ style: { fill: "var(--foreground)" } }}
+            tick={STRONG_TICK}
           />
-          <XAxis type="number" tickLine={false} axisLine={false} tickFormatter={tick} hide={!multi} />
+          <XAxis type="number" tickLine={false} axisLine={false} tickFormatter={tick} tick={MUTED_TICK} hide={!multi} />
           {tooltip}
           {legend}
           {series.map((s) => (
-            <Bar key={s.key} dataKey={s.key} fill={`var(--color-${s.key})`} radius={4} isAnimationActive={animate}>
-              {!multi && <LabelList dataKey={s.key} position="right" className="fill-foreground" formatter={(v: unknown) => (typeof v === "number" ? formatValue(v, y.format, false, locale) : "")} />}
+            <Bar key={s.key} dataKey={s.key} fill={`var(--color-${s.key})`} radius={4} isAnimationActive={animate} onAnimationEnd={onAnimationEnd}>
+              {!multi && (
+                <LabelList
+                  dataKey={s.key}
+                  position="right"
+                  fill={INK.strong}
+                  style={{ fill: INK.strong }}
+                  formatter={(v: unknown) => (typeof v === "number" ? formatValue(v, y.format, false, locale) : "")}
+                />
+              )}
             </Bar>
           ))}
         </BarChart>
@@ -160,9 +214,9 @@ export function ChartView({ view }: Props) {
 
   const axes = (
     <>
-      <CartesianGrid vertical={false} />
-      <XAxis dataKey="x" tickLine={false} axisLine={false} minTickGap={28} tickFormatter={xTick} />
-      <YAxis tickLine={false} axisLine={false} width={76} tickFormatter={tick} />
+      <CartesianGrid vertical={false} stroke={INK.grid} />
+      <XAxis dataKey="x" tickLine={false} axisLine={false} minTickGap={28} tickFormatter={xTick} tick={MUTED_TICK} />
+      <YAxis tickLine={false} axisLine={false} width={76} tickFormatter={tick} tick={MUTED_TICK} />
     </>
   )
   if (multi) {
@@ -173,7 +227,13 @@ export function ChartView({ view }: Props) {
           {tooltip}
           {legend}
           {series.map((s) => (
-            <Line key={s.key} dataKey={s.key} type="monotone" stroke={`var(--color-${s.key})`} strokeWidth={2} dot={false} connectNulls isAnimationActive={animate} />
+            <Line key={s.key} dataKey={s.key} type="monotone" stroke={`var(--color-${s.key})`}
+              strokeWidth={2}
+              dot={false}
+              connectNulls
+              isAnimationActive={animate}
+              onAnimationEnd={onAnimationEnd}
+            />
           ))}
         </LineChart>
       </ChartContainer>
@@ -184,7 +244,18 @@ export function ChartView({ view }: Props) {
       <AreaChart data={data} margin={{ left: 4, right: 16, top: 8 }} accessibilityLayer>
         {axes}
         {tooltip}
-        <Area dataKey="s0" type="monotone" stroke="var(--color-s0)" strokeWidth={2} fill="var(--color-s0)" fillOpacity={0.2} dot={data.length <= 24} isAnimationActive={animate} />
+        <Area
+          dataKey="s0"
+          type="monotone"
+          stroke="var(--color-s0)"
+          strokeWidth={2}
+          fill="var(--color-s0)"
+          fillOpacity={0.2}
+          // Explicit dot colors: the container's class-based dot styling does not reach the PNG.
+          dot={data.length <= 24 ? { fill: "var(--card)", stroke: "var(--color-s0)", strokeWidth: 2 } : false}
+          isAnimationActive={animate}
+          onAnimationEnd={onAnimationEnd}
+        />
       </AreaChart>
     </ChartContainer>
   )

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { FileSpreadsheet, X } from "lucide-react"
 import { AskBar } from "@/components/ask-bar"
 import { Dropzone } from "@/components/dropzone"
@@ -29,6 +29,7 @@ export function InsituApp() {
   const [fileLoading, setFileLoading] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
   const [state, setState] = useState<AnswerState>({ kind: "idle" })
+  const answerCount = useRef(0)
 
   async function openFile(file: File) {
     if (!isAccepted(file.name)) {
@@ -102,7 +103,7 @@ export function InsituApp() {
 
       const view = resolveView(plan, result.rows, result.columns, result.complete, t.insight.other)
       const resultColumns = resolveColumns(plan.columns, result.columns, result.rows)
-      setState({ kind: "done", answer: { question, plan, rows: result.rows, resultColumns, view } })
+      setState({ kind: "done", answer: { id: ++answerCount.current, question, plan, rows: result.rows, complete: result.complete, resultColumns, view } })
       return
     }
   }
@@ -170,7 +171,8 @@ export function InsituApp() {
       {busy && <div className="h-96 animate-pulse rounded-xl border bg-card" aria-label={t.ask.computing} />}
 
       {state.kind === "done" && (
-        <ResultBento answer={state.answer} columns={dataset.columns} rowCount={dataset.rowCount} />
+        // Keyed per answer so export state (e.g. "chart ready") starts fresh for every result.
+        <ResultBento key={state.answer.id} answer={state.answer} columns={dataset.columns} rowCount={dataset.rowCount} />
       )}
     </div>
   )

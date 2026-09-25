@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { memo, useCallback, useRef, useState } from "react"
 import { Check, ChevronDown, ClipboardCopy, Code2, FileImage, FileText, Sparkles } from "lucide-react"
 import { ChartView } from "@/components/chart-view"
 import { useI18n } from "@/components/i18n-provider"
@@ -9,6 +9,7 @@ import { TableView } from "@/components/table-view"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { runQuery, MAX_EXPORT_ROWS } from "@/lib/engine/run-query"
 import { copyTable, downloadCsv, downloadPng } from "@/lib/export"
 import { formatCount } from "@/lib/format"
 import { buildInsight } from "@/lib/insight"
@@ -16,15 +17,22 @@ import type { ResultView } from "@/lib/result-view"
 import type { Column, OutputColumn, QueryPlan, ResultRow } from "@/lib/schema"
 
 export type Answer = {
+  id: number
   question: string
   plan: QueryPlan
-  /** Full query result, used for the CSV export. */
+  /** Query result as fetched for display (at most MAX_RESULT_ROWS). */
   rows: ResultRow[]
+  /** False when the query returned more rows than were fetched for display. */
+  complete: boolean
   resultColumns: OutputColumn[]
   view: ResultView
 }
 
-function ResultBody({ view }: { view: ResultView }) {
+/**
+ * Memoized so export-button state changes never re-render the chart: Recharts hides
+ * value labels while it re-animates, and a PNG taken in that window had no prices.
+ */
+const ResultBody = memo(function ResultBody({ view, onChartReady }: { view: ResultView; onChartReady: () => void }) {
   const { t } = useI18n()
   switch (view.kind) {
     case "empty":
@@ -34,9 +42,9 @@ function ResultBody({ view }: { view: ResultView }) {
     case "table":
       return <TableView view={view} />
     default:
-      return <ChartView view={view} />
+      return <ChartView view={view} onReady={onChartReady} />
   }
-}
+})
 
 type Props = {
   answer: Answer
@@ -51,11 +59,34 @@ function slug(s: string): string {
 export function ResultBento({ answer, columns, rowCount }: Props) {
   const chartRef = useRef<HTMLDivElement>(null)
   const { t, locale } = useI18n()
-  const { question, plan, rows, resultColumns, view } = answer
+  const { question, plan, rows, complete, resultColumns, view } = answer
   // Computed per render so switching the language updates it immediately.
   const insight = buildInsight(view, locale)
   const fileName = `insitu-${slug(question)}`
   const [status, setStatus] = useState<"idle" | "exporting" | "copied" | "error">("idle")
+  // Charts animate in; exporting before that would capture half-drawn bars and no value labels.
+  // (A new answer remounts this component, which resets the flag.)
+  const isChart = view.kind === "bar" || view.kind === "line" || view.kind === "pie"
+  const [chartReady, setChartReady] = useState(!isChart)
+  const onChartReady = useCallback(() => setChartReady(true), [])
+
+  /**
+   * Exports must contain the whole result. When the display copy was cut off, the query is
+   * re-run in DuckDB for all rows (bounded by MAX_EXPORT_ROWS, which the file name then states).
+   */
+  const fullRows = useRef<Promise<{ rows: ResultRow[]; suffix: string }> | null>(null)
+  function exportRows(): Promise<{ rows: ResultRow[]; suffix: string }> {
+    if (complete) return Promise.resolve({ rows, suffix: "" })
+    // Fetched once and reused, so CSV then copy does not run the full query twice.
+    fullRows.current ??= runQuery(plan.sql, MAX_EXPORT_ROWS).then((full) => {
+      if (!full.ok) throw new Error(full.error)
+      return { rows: full.rows, suffix: full.complete ? "" : `-ilk-${MAX_EXPORT_ROWS}` }
+    })
+    fullRows.current.catch(() => {
+      fullRows.current = null // allow a retry after a failure
+    })
+    return fullRows.current
+  }
 
   async function run(action: () => Promise<void> | void, done: "idle" | "copied" = "idle") {
     setStatus("exporting")
@@ -76,7 +107,7 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
           <CardDescription>{question}</CardDescription>
         </CardHeader>
         <CardContent>
-          <ResultBody view={view} />
+          <ResultBody view={view} onChartReady={onChartReady} />
         </CardContent>
       </Card>
 
@@ -100,7 +131,8 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
             <Button
               variant="outline"
               className="h-11"
-              disabled={status === "exporting"}
+              disabled={status === "exporting" || !chartReady}
+              aria-busy={!chartReady}
               onClick={() => void run(() => (chartRef.current ? downloadPng(chartRef.current, fileName) : undefined))}
             >
               <FileImage aria-hidden /> PNG
@@ -108,8 +140,13 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
             <Button
               variant="outline"
               className="h-11"
-              disabled={rows.length === 0}
-              onClick={() => void run(() => downloadCsv(resultColumns, rows, fileName, locale))}
+              disabled={rows.length === 0 || status === "exporting"}
+              onClick={() =>
+                void run(async () => {
+                  const all = await exportRows()
+                  await downloadCsv(resultColumns, all.rows, fileName + all.suffix, locale)
+                })
+              }
             >
               <FileText aria-hidden /> CSV
             </Button>
@@ -117,7 +154,9 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
               variant="outline"
               className="col-span-2 h-11"
               disabled={rows.length === 0 || status === "exporting"}
-              onClick={() => void run(() => copyTable(resultColumns, rows, locale), "copied")}
+              onClick={() =>
+                void run(() => copyTable(resultColumns, exportRows().then((all) => all.rows), locale), "copied")
+              }
             >
               {status === "copied" ? <Check aria-hidden /> : <ClipboardCopy aria-hidden />}
               {status === "copied" ? t.result.copied : t.result.copy}
