@@ -1,0 +1,71 @@
+# Temel metrikler
+Toplam kaç liralık satış yaptık?
+Bugüne kadarki toplam sipariş adedi kaç?
+Sepet başına ortalama sipariş tutarı (AOV) ne kadar?
+Şimdiye kadar satılan toplam ürün adedi kaç?
+Sistemde kayıtlı kaç farklı benzersiz müşteri/sipariş var?
+Satılan en pahalı ürünün fiyatı ne kadar?
+En düşük tutarlı sipariş kaç TL?
+Toplam kaç farklı ürün çeşidi satıldı?
+Ortalama ürün satış fiyatı nedir?
+İade veya 0 tutarlı kayıt var mı, varsa kaç adet?
+# Sıralama
+En çok ciro getiren ilk 5 ürün hangisi?
+En az satış yapılan 3 şehir hangisi?
+Adet bazında en çok satan 10 ürün?
+En yüksek ortalama sipariş değerine sahip ilk 3 kategori hangisi?
+Cirosu en düşük olan ürün kategorisi hangisi?
+En çok sipariş verilen ilk 5 gün hangileri?
+En pahalı ilk 5 ürün ve fiyatları nedir?
+Satış adedi 10’un altında kalan ürünler hangileri?
+En yüksek tekil sipariş cirosuna sahip ilk 3 işlem?
+En çok tercih edilen ödeme yöntemi hangisi?
+# Zaman
+Aylara göre toplam ciro nasıl değişti?
+Günlük satış trendini çizgi grafikle göster.
+Haftalık bazda satılan ürün adetlerinin grafiği nedir?
+Ocak, Şubat ve Mart aylarının satış hacimlerini karşılaştır.
+Hafta sonu yapılan satışlar ile hafta içi satışlar arasında nasıl bir fark var?
+Hangi ayda ciro zirve yaptı?
+Zaman içinde ortalama sepet tutarı arttı mı azaldı mı?
+Son 30 günün günlük sipariş frekansı nedir?
+Kategorilerin aylık bazdaki büyüme trendi nasıl?
+Tarih bazında kümülatif (artan toplam) ciro grafiğini çıkar.
+# Dağılım
+Toplam cironun ödeme yöntemlerine göre dağılımı yüzde kaç?
+Satışların kategorilere göre oransal dağılımını göster.
+Şehirlerin toplam ciro içerisindeki payları nedir?
+Sipariş adetlerinin kategorilere göre pasta grafiğini çıkar.
+Kredi kartı ile yapılan ödemelerin tüm ciroya oranı nedir?
+En büyük 3 kategorinin toplam pasta içindeki büyüklüğü ne kadar?
+# Filtreler
+İstanbul ve Ankara'da kredi kartıyla yapılan toplam satış tutarı ne kadar?
+Fiyatı 2000 TL üzerinde olup 2 adetten fazla satılan ürünler hangileri?
+Elektronik kategorisinde havale ile ödenen siparişlerin listesi ve toplamı nedir?
+Şubat ayında İzmir'de en çok satan ürün hangisi oldu?
+Toplam tutarı 5000 TL'den büyük olan siparişler hangi şehirlerden verildi?
+"Kulaklık" veya "Klavye" içeren ürünlerin toplam geliri nedir?
+Hafta içi yapılan ve 1000 TL altındaki satışların kategorilere dağılımı nedir?
+Bursa'da satılan Ev Yaşam ürünlerinin ortalama adedi kaçtır?
+Mart ayında satılan fakat Ocak ayında hiç satılmayan ürünler var mı?
+1000 TL altı, 1000-3000 TL arası ve 3000 TL üzeri siparişlerin adet dağılımı
+# Günlük dil
+Kim ne kadar kazandırdı?
+En çok para hangi şehirden geldi?
+İşler hangi ay daha iyi gitti?
+Millet en çok neyi alıyor?
+Hangi alanda çuvallıyoruz, en az para getiren yer neresi?
+Kasaya giren toplam nakit/kart dengesi nasıl?
+Pahalı ürünler mi daha çok satıyor ucuzlar mı?
+Şirketi ayakta tutan ilk 3 şey ne?
+En popüler kategori hangisi?
+Satışlar yükselişte mi düşüşte mi?
+# Karşılaştırma
+Elektronik kategorisindeki ortalama ürün fiyatı ile Giyim kategorisinin ortalamasını kıyasla.
+Şehir başına düşen ortalama sipariş tutarı nedir?
+Her siparişte ortalama kaç adet ürün alınıyor?
+En yüksek birim fiyatlı ürün ile en çok satan ürün aynı mı?
+Kredi kartı ile yapılan alışverişlerin ortalama sepet büyüklüğü, havaleden ne kadar fazla?
+Toplam cironun yüzde kaçı ilk 2 şehirden geliyor?
+# Olmayan sütun
+Müşteri memnuniyeti nasıl?

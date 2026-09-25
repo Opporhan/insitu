@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# third-party skill without a license: installed locally, not redistributed (see README)
+/.claude/skills/mastering-typescript/
