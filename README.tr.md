@@ -8,7 +8,7 @@
 
 > *In situ* — Latince "kendi yerinde". Tüm hesaplama kullanıcının kendi tarayıcısında yapılır.
 
-**Canlı demo:** DEMO_URL
+**Canlı demo:** [insitu-five.vercel.app](https://insitu-five.vercel.app)
 
 ## Nasıl çalışır
 

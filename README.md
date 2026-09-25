@@ -8,7 +8,7 @@
 
 > *In situ* — Latin for "in its original place". Every computation runs in the user's own browser.
 
-**Live demo:** DEMO_URL
+**Live demo:** [insitu-five.vercel.app](https://insitu-five.vercel.app)
 
 ## How it works
 
