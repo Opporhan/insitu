@@ -1,0 +1,1 @@
+Insitu — Tablonla konuş. CSV ve Excel dosyalarına günlük dille soru sor; verin cihazından çıkmaz.
