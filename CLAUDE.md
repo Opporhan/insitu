@@ -90,6 +90,7 @@ Ayrıntılar: **`docs/design-system.md`** (renk token'ları, tipografi, grafik s
 
 ## Gizlilik Sınırı (mimari kural — ihlal etme)
 - Sunucuya giden **tek** payload `TranslateRequest`: `{ question, columns: [{ name, type }], repair? }`. Şema `z.strictObject` ile kilitli; satır/örnek veri alanı eklenmez.
+- `history` (en fazla 3 tur, takip soruları için) yalnızca önceki **soru metni + SQL**'i taşır; önceki sonuçların değerleri, içgörüsü veya satırları asla eklenmez (`HistoryTurn` katı şema). Dosya değişince ve "Yeni konu" ile sıfırlanır.
 - `repair` yalnızca üretilen SQL'i ve **yapısal** bir motor hatasını taşır (Binder/Parser/Catalog; tırnak içindeki değerler maskelenir). Veriye bağlı hatalar (Conversion, Out of Range…) asla gönderilmez — bkz. `repairableError` (`src/lib/engine/normalize.ts`).
 - Sunucudan dönen tek şey `QueryPlan`. Sonuç satırları sunucuya geri gönderilmez.
 - **İçgörü cümlesi yapay zekâya yazdırılmaz.** Model sonucu görmediği için yazacağı her sayı uydurma olur; içgörü `src/lib/insight.ts`'te gerçek sonuçtan hesaplanır.

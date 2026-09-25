@@ -22,10 +22,24 @@ export const RepairContext = z.strictObject({
 })
 export type RepairContext = z.infer<typeof RepairContext>
 
+/**
+ * A previous turn of the conversation, for follow-up questions ("and how many units?").
+ * Only the user's own question and the generated SQL — never any result values.
+ */
+export const HistoryTurn = z.strictObject({
+  question: z.string().trim().min(2).max(500),
+  sql: z.string().min(1).max(8000),
+})
+export type HistoryTurn = z.infer<typeof HistoryTurn>
+
+export const MAX_HISTORY = 3
+
 export const TranslateRequest = z.strictObject({
   question: z.string().trim().min(2).max(500),
   columns: z.array(Column).min(1).max(200),
   repair: RepairContext.optional(),
+  /** Earlier turns, oldest first. */
+  history: z.array(HistoryTurn).max(MAX_HISTORY).optional(),
   /** UI language: the plan's title, labels and explanations are written in it. */
   locale: z.enum(LOCALES).optional(),
 })

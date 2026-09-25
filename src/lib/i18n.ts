@@ -81,6 +81,8 @@ const tr = {
     computing: "Hesaplanıyor",
     translateFailed: "Soru şu an çevrilemedi, lütfen tekrar dene.",
     computeFailed: (detail: string) => `Hesaplama sırasında bir sorun oluştu: ${detail}`,
+    followUp: (question: string) => `Takip sorusu sorabilirsin — önceki: “${question}”`,
+    newTopic: "Yeni konu",
   },
   result: {
     region: "Sonuç",
@@ -92,7 +94,10 @@ const tr = {
     copyHint: "Kopyalanan tablo Excel veya Sheets'e doğrudan yapıştırılabilir.",
     exportFailed: "İşlem tamamlanamadı; tarayıcı izin vermemiş olabilir.",
     how: "Bu analizi nasıl hesapladım?",
-    howSent: (n: number) => `Yapay zekâya yalnızca sorun ve ${n} sütun adı gitti:`,
+    howSent: (n: number, context: number) =>
+      context > 0
+        ? `Yapay zekâya yalnızca sorun, önceki ${context} sorunun metni ve SQL'i (sonuçları değil) ve ${n} sütun adı gitti:`
+        : `Yapay zekâya yalnızca sorun ve ${n} sütun adı gitti:`,
     howRan: (rows: string) => `Dönen sorgu, tarayıcında DuckDB ile ${rows} satır üzerinde çalıştı:`,
     listTotal: "Listenin toplamı",
     slices: "Dilimler",
@@ -192,6 +197,8 @@ const en: Messages = {
     computing: "Computing",
     translateFailed: "Couldn't translate the question right now, please try again.",
     computeFailed: (detail) => `Something went wrong while computing: ${detail}`,
+    followUp: (question) => `You can ask a follow-up — previous: “${question}”`,
+    newTopic: "New topic",
   },
   result: {
     region: "Result",
@@ -203,7 +210,10 @@ const en: Messages = {
     copyHint: "The copied table pastes straight into Excel or Sheets.",
     exportFailed: "Couldn't complete that; the browser may have blocked it.",
     how: "How did I calculate this?",
-    howSent: (n) => `Only your question and ${n} column names were sent to the AI:`,
+    howSent: (n, context) =>
+      context > 0
+        ? `Only your question, the text and SQL of ${context} earlier question${context === 1 ? "" : "s"} (not their results) and ${n} column names were sent to the AI:`
+        : `Only your question and ${n} column names were sent to the AI:`,
     howRan: (rows) => `The returned query ran in your browser with DuckDB over ${rows} rows:`,
     listTotal: "List total",
     slices: "Slices",

@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { FileSpreadsheet, X } from "lucide-react"
+import { FileSpreadsheet, MessagesSquare, RotateCcw, X } from "lucide-react"
 import { AskBar } from "@/components/ask-bar"
 import { Dropzone } from "@/components/dropzone"
 import { useI18n } from "@/components/i18n-provider"
@@ -11,7 +11,7 @@ import { isAccepted, loadFile, type Dataset } from "@/lib/engine/load-file"
 import { runQuery } from "@/lib/engine/run-query"
 import { formatCount } from "@/lib/format"
 import { resolveColumns, resolveView } from "@/lib/result-view"
-import { TranslateResponse, type RepairContext, type TranslateRequest } from "@/lib/schema"
+import { MAX_HISTORY, TranslateResponse, type HistoryTurn, type RepairContext, type TranslateRequest } from "@/lib/schema"
 import { suggestQuestions } from "@/lib/suggestions"
 
 type AnswerState =
@@ -30,6 +30,8 @@ export function InsituApp() {
   const [fileError, setFileError] = useState<string | null>(null)
   const [state, setState] = useState<AnswerState>({ kind: "idle" })
   const answerCount = useRef(0)
+  // Earlier questions + their SQL, so follow-ups ("and how many units?") keep the context.
+  const [history, setHistory] = useState<HistoryTurn[]>([])
 
   async function openFile(file: File) {
     if (!isAccepted(file.name)) {
@@ -41,6 +43,7 @@ export function InsituApp() {
     try {
       setDataset(await loadFile(file))
       setState({ kind: "idle" })
+      setHistory([])
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e)
       setFileError(t.file.readFailed(t.file.codes[detail] ?? detail))
@@ -73,9 +76,13 @@ export function InsituApp() {
     for (let attempt = 0; attempt < 2; attempt++) {
       // The only data that leaves the browser: the question, column headers and, on a
       // repair, the generated SQL with a masked structural error message.
-      const payload: TranslateRequest = repair
-        ? { question, columns: dataset.columns, repair, locale }
-        : { question, columns: dataset.columns, locale }
+      const payload: TranslateRequest = {
+        question,
+        columns: dataset.columns,
+        locale,
+        ...(repair ? { repair } : {}),
+        ...(history.length > 0 ? { history } : {}),
+      }
       const translated = await translate(payload)
       if (!translated) {
         setState({ kind: "error", message: t.ask.translateFailed, suggestions: [] })
@@ -103,7 +110,20 @@ export function InsituApp() {
 
       const view = resolveView(plan, result.rows, result.columns, result.complete, t.insight.other)
       const resultColumns = resolveColumns(plan.columns, result.columns, result.rows)
-      setState({ kind: "done", answer: { id: ++answerCount.current, question, plan, rows: result.rows, complete: result.complete, resultColumns, view } })
+      setState({
+        kind: "done",
+        answer: {
+          id: ++answerCount.current,
+          question,
+          plan,
+          rows: result.rows,
+          complete: result.complete,
+          resultColumns,
+          view,
+          contextTurns: history.length,
+        },
+      })
+      setHistory([...history, { question, sql: plan.sql }].slice(-MAX_HISTORY))
       return
     }
   }
@@ -154,6 +174,7 @@ export function InsituApp() {
           onClick={() => {
             setDataset(null)
             setState({ kind: "idle" })
+            setHistory([])
           }}
         >
           <X aria-hidden />
@@ -161,6 +182,16 @@ export function InsituApp() {
       </div>
 
       <AskBar busy={busy} suggestions={suggestions} onAsk={ask} />
+
+      {history.length > 0 && (
+        <div className="-mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+          <MessagesSquare className="size-3.5 shrink-0 text-primary" aria-hidden />
+          <span className="min-w-0 truncate">{t.ask.followUp(history[history.length - 1]?.question ?? "")}</span>
+          <Button variant="ghost" size="sm" className="h-11 shrink-0 px-3 text-xs" disabled={busy} onClick={() => setHistory([])}>
+            <RotateCcw aria-hidden /> {t.ask.newTopic}
+          </Button>
+        </div>
+      )}
 
       {state.kind === "error" && (
         <p role="alert" className="text-sm text-destructive">

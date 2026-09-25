@@ -79,7 +79,17 @@ Final SELECT'teki HER sütunu aynı sırayla columns dizisinde tanımla:
 - format: "currency" (TL tutarları), "integer" (adet, sayım), "number" (para olmayan ortalamalar, katsayılar), "percent" (0–100 ölçeğinde yüzde), "text", "date" ('YYYY-MM-DD' metni), "month" ('YYYY-MM' metni).
 - total: satırlar boyunca bu sütunu TOPLAMAK anlamlıysa true (tutar, ciro, adet, sipariş sayısı gibi toplanabilir miktarlar). Birim fiyat, ortalama, oran, yüzde, kümülatif değer, metin ve tarihler için false. İstemci true olan sütunların genel toplamını tablonun altında gösterir; "listesi ve toplamı" soruları böyle cevaplanır.
 
-## 5. Diğer alanlar
+## 5. Takip soruları (konuşma bağlamı)
+Bazen yeni sorudan önce, aynı konuşmadaki önceki sorular ve onların SQL'leri verilir (eskiden yeniye). Sonuç değerlerini yine BİLMİYORSUN; SQL yalnızca neyin hesaplandığını gösterir.
+- Yeni soru kendi başına eksikse veya öncekine dayanıyorsa ("ve kaç adet satılmış?", "peki cirosu?", "bunların ortalaması", "geçen ay nasıldı?", "sadece İstanbul için", "tablo olarak göster") onu EN SON sorunun devamı say:
+  - En son sorunun kapsamını aynen koru: filtreler, dönem ("bu ay"), gruplama ve seçilen kalemler (ör. "ilk 3 ürün").
+  - Seçilen kalemleri aynı mantıkla yeniden bul: önceki SQL'deki sıralama/LIMIT'i bir alt sorgu veya CTE olarak kullan, ardından istenen ölçüyü ekle. Örnek: önce "bu ay en çok ciro getiren 3 ürün", sonra "ve kaç adet satılmış?" → aynı 3 ürünü aynı sıralamayla seç ve her biri için adedi (bağlam için ciroyla birlikte) göster.
+  - Yeni ölçüyü öne çıkar (yAxisKey / ilk sayısal sütun), önceki ölçüyü de bağlam için tutabilirsin; birden fazla ölçü varsa "table" uygundur.
+  - Başlığa bağlamı yaz (ör. "Bu Ayın İlk 3 Ürünü: Satış Adedi").
+- "Peki geçen ay?", "ya Ankara?" gibi sorularda yalnızca değişen koşulu değiştir, gerisini koru.
+- Yeni soru kendi başına anlamlı ve farklı bir konuysa geçmişi yok say.
+
+## 6. Diğer alanlar
 - title: grafiğin kısa Türkçe başlığı (en fazla 60 karakter).
 - explanation: normalde "". Soru tabloda OLMAYAN bir sütun/kavram gerektiriyorsa sql = "" yap ve explanation'da hangi bilginin eksik olduğunu nazik bir Türkçe cümleyle belirt (ör. "Tabloda müşteri memnuniyeti bilgisi bulunmuyor.").`
 
@@ -133,9 +143,14 @@ const LANGUAGE_RULE = {
   en: "Response language: English. Write title, columns[].label, explanation and any label text you create inside the SQL (e.g. CASE results such as 'Weekend') in English. Values that come from the data (city or product names used in filters) stay exactly as the user wrote them.",
 } as const
 
-function userPrompt({ question, columns, repair, locale = "tr" }: TranslateRequest, problem: string | null): string {
+function userPrompt({ question, columns, repair, history, locale = "tr" }: TranslateRequest, problem: string | null): string {
   const list = columns.map((c) => `- "${c.name}" (${c.type})`).join("\n")
-  let prompt = `${LANGUAGE_RULE[locale]}\n\nTablo: data\nSütunlar:\n${list}\n\nSoru: ${question}`
+  const context = history?.length
+    ? `\n\nÖnceki konuşma (eskiden yeniye; sonuç değerleri gönderilmez):\n${history
+        .map((h, i) => `${i + 1}) Soru: ${h.question}\n   SQL: ${h.sql.replace(/\s+/g, " ")}`)
+        .join("\n")}\n\nYeni soru (gerekirse yukarıdakinin devamı):`
+    : "\n\nSoru:"
+  let prompt = `${LANGUAGE_RULE[locale]}\n\nTablo: data\nSütunlar:\n${list}${context} ${question}`
   const fix = problem ?? (repair ? `Önceki SQL tarayıcıda şu hatayı verdi: ${repair.error}\nÖnceki SQL:\n${repair.sql}` : null)
   if (fix) prompt += `\n\nDÜZELTME GEREKİYOR. ${fix}\nAynı soruyu, bu sorunu gideren yeni bir planla yanıtla.`
   return prompt

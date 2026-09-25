@@ -33,6 +33,10 @@ flowchart LR
 4. **Run:** The SQL passes a guard (single `SELECT`, no file or network functions) and runs in DuckDB in the browser. After loading, DuckDB's external access is disabled and locked.
 5. **Draw:** If the result is consistent with the plan it becomes a metric, bar, line or pie chart; otherwise it falls back to a table instead of a misleading chart. The insight sentence is never written by the AI: the model can't see the result, so the sentence is computed from the real result in the browser.
 
+## Follow-up questions
+
+After "show the top 3 products this month", questions like "and how many units?", "what about last month?" or "only card payments" keep the earlier scope (period, filters, selected items). For this, only the **text and SQL** of the last 3 questions are sent to the AI — never their results. "New topic" clears the context.
+
 ## Accuracy principles
 
 - **No invented numbers.** The model never sees the data; every number comes from DuckDB, every insight from the actual result.

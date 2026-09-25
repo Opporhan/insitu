@@ -69,3 +69,8 @@ Kredi kartı ile yapılan alışverişlerin ortalama sepet büyüklüğü, haval
 Toplam cironun yüzde kaçı ilk 2 şehirden geliyor?
 # Olmayan sütun
 Müşteri memnuniyeti nasıl?
+# Takip soruları (">>" ile ayrılmış satırlar tek bir konuşmadır)
+bu ay satılan en çok 3 ürünü göster >> ve kaç adet satılmış
+bu ay en çok ciro getiren 3 ürün >> ve kaç adet satılmış >> peki geçen ay?
+şehirlere göre toplam ciro >> sadece kredi kartı ile ödenenler
+En çok satan kategori hangisi? >> Aylara göre toplam ciro nasıl değişti?

@@ -10,7 +10,7 @@ import { guardSql } from "@/lib/engine/guard"
 import { normalizeSql, repairableError } from "@/lib/engine/normalize"
 import { buildInsight } from "@/lib/insight"
 import { resolveView } from "@/lib/result-view"
-import { ResultRow, type Column, type ColumnType, type RepairContext } from "@/lib/schema"
+import { ResultRow, type Column, type ColumnType, type HistoryTurn, type RepairContext } from "@/lib/schema"
 import { translator } from "@/lib/translator"
 
 const csvPath = process.argv[2] ?? "public/samples/satislar.csv"
@@ -48,14 +48,16 @@ async function run(sql: string): Promise<Run> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-for (const question of questions) {
+// A line "Q1 >> Q2 >> Q3" is one conversation: each turn is sent with the earlier ones as history.
+async function ask(question: string, history: HistoryTurn[]): Promise<Record<string, unknown>> {
   let repair: RepairContext | undefined
   let record: Record<string, unknown> = { question }
   for (let attempt = 0; attempt < 2; attempt++) {
-    let res = await translator.translate(repair ? { question, columns, repair } : { question, columns })
+    const request = { question, columns, ...(repair ? { repair } : {}), ...(history.length ? { history } : {}) }
+    let res = await translator.translate(request)
     for (let wait = 0; !res.ok && res.error.includes("kota") && wait < 3; wait++) {
       await sleep(65_000)
-      res = await translator.translate(repair ? { question, columns, repair } : { question, columns })
+      res = await translator.translate(request)
     }
     if (!res.ok) {
       record = { question, translateError: res.error }
@@ -82,6 +84,19 @@ for (const question of questions) {
     }
     break
   }
-  console.log(JSON.stringify(record))
+  return record
+}
+
+for (const line of questions) {
+  const turns = line.split(">>").map((q) => q.trim())
+  const history: HistoryTurn[] = []
+  let record: Record<string, unknown> = {}
+  for (const question of turns) {
+    record = await ask(question, history)
+    const plan = record["plan"] as { sql: string } | undefined
+    if (!plan || !("rows" in record)) break
+    history.push({ question, sql: plan.sql })
+  }
+  console.log(JSON.stringify(turns.length > 1 ? { ...record, conversation: turns } : record))
   await sleep(3_000)
 }

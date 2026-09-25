@@ -33,6 +33,10 @@ flowchart LR
 4. **Çalıştır:** SQL bir korumadan geçer (tek `SELECT`, dosya ve ağ fonksiyonları yok) ve tarayıcıdaki DuckDB'de çalışır. Yükleme sonrası DuckDB'nin dış erişimi kapatılıp kilitlenir.
 5. **Çiz:** Sonuç veriyle tutarlıysa metrik, çubuk, çizgi veya pasta grafik olarak çizilir; tutarsızsa yanlış bir grafik yerine tabloya düşer. İçgörü cümlesi yapay zekâya yazdırılmaz: model sonucu görmediği için gerçek sonuçtan tarayıcıda hesaplanır.
 
+## Takip soruları
+
+"Bu ay en çok satan 3 ürünü göster" dedikten sonra "ve kaç adet satılmış?", "peki geçen ay?" veya "sadece kredi kartı ile ödenenler" gibi sorular önceki sorunun kapsamını (dönem, filtreler, seçilen kalemler) koruyarak cevaplanır. Bunun için yapay zekâya son 3 sorunun yalnızca **metni ve SQL'i** gider; sonuçları asla gitmez. "Yeni konu" ile bağlam sıfırlanır.
+
 ## Doğruluk ilkeleri
 
 - **Uydurma sayı yok.** Model veriyi görmez; her sayı DuckDB'den, her içgörü gerçek sonuçtan gelir.

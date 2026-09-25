@@ -24,6 +24,8 @@ export type Answer = {
   rows: ResultRow[]
   /** False when the query returned more rows than were fetched for display. */
   complete: boolean
+  /** How many earlier questions were sent as context for this one. */
+  contextTurns: number
   resultColumns: OutputColumn[]
   view: ResultView
 }
@@ -179,7 +181,7 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
             </CardHeader>
             <CollapsibleContent>
               <CardContent className="flex flex-col gap-3 pt-3 text-sm">
-                <p className="text-muted-foreground">{t.result.howSent(columns.length)}</p>
+                <p className="text-muted-foreground">{t.result.howSent(columns.length, answer.contextTurns)}</p>
                 <ul className="flex flex-wrap gap-1.5">
                   {columns.map((c) => (
                     <li key={c.name} className="rounded-md border bg-background px-2 py-0.5 font-mono text-xs">
