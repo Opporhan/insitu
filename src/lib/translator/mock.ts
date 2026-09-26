@@ -132,6 +132,7 @@ function xyPlan(chartType: QueryPlan["chartType"], x: OutputColumn, measure: Mea
     seriesKey: "",
     title: `${x.label} bazında ${measure.name}`,
     columns: [x, { key: "value", label: measure.name, format: measure.format, total: measure.additive }],
+    note: "",
   }
 }
 

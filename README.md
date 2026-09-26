@@ -33,6 +33,18 @@ flowchart LR
 4. **Run:** The SQL passes a guard (single `SELECT`, no file or network functions) and runs in DuckDB in the browser. After loading, DuckDB's external access is disabled and locked.
 5. **Draw:** If the result is consistent with the plan it becomes a metric, bar, line or pie chart; otherwise it falls back to a table instead of a misleading chart. The insight sentence is never written by the AI: the model can't see the result, so the sentence is computed from the real result in the browser.
 
+## Messy files (Universal Ingestion)
+
+Corporate Excel and CSV files are rarely clean. On upload Insitu automatically does the following and lists every change in a **preparation report**:
+- A **sheet selector** when several sheets contain data
+- **Header detection** (first 15 rows), skipping report titles / notes / blank rows above it
+- **Delimiter sniffing** for `,` `;` tab `|`; UTF-8, UTF-16 and **Windows-1254** (Turkish Excel) encodings
+- Removal of empty and ghost rows/columns and **TOTAL / GRAND TOTAL / AVERAGE** summary rows (no double counting)
+- Queryable column names (`Tutar (TL) 💰` → `tutar_tl`, duplicates `tutar_tl_1`)
+- A **20-row preview** of the cleaned data
+
+When a requested concept isn't in the table, the closest column is used and a note says so (e.g. "grouped by district: no province column").
+
 ## Follow-up questions
 
 After "show the top 3 products this month", questions like "and how many units?", "what about last month?" or "only card payments" keep the earlier scope (period, filters, selected items). For this, only the **text and SQL** of the last 3 questions are sent to the AI — never their results. "New topic" clears the context.

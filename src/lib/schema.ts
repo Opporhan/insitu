@@ -70,6 +70,8 @@ export const QueryPlan = z.strictObject({
   seriesKey: z.string(),
   title: z.string().min(1).max(120),
   columns: z.array(OutputColumn).min(1).max(20),
+  /** Assumption the translator made (e.g. "grouped by district: no province column"); "" if none. Never contains numbers from the data. */
+  note: z.string().max(240),
 })
 export type QueryPlan = z.infer<typeof QueryPlan>
 

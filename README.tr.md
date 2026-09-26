@@ -33,6 +33,18 @@ flowchart LR
 4. **Çalıştır:** SQL bir korumadan geçer (tek `SELECT`, dosya ve ağ fonksiyonları yok) ve tarayıcıdaki DuckDB'de çalışır. Yükleme sonrası DuckDB'nin dış erişimi kapatılıp kilitlenir.
 5. **Çiz:** Sonuç veriyle tutarlıysa metrik, çubuk, çizgi veya pasta grafik olarak çizilir; tutarsızsa yanlış bir grafik yerine tabloya düşer. İçgörü cümlesi yapay zekâya yazdırılmaz: model sonucu görmediği için gerçek sonuçtan tarayıcıda hesaplanır.
 
+## Dağınık dosyalar (Universal Ingestion)
+
+Kurumsal Excel ve CSV dosyaları nadiren temizdir. Insitu yüklemede şunları otomatik yapar ve **hazırlık raporunda** tek tek gösterir:
+- Birden fazla dolu sekme varsa **sekme seçici**
+- **Başlık satırını bulma** (ilk 15 satırda), üstteki rapor başlığı / açıklama / boş satırları atma
+- `,` `;` Tab `|` **ayraç algılama**; UTF-8, UTF-16 ve **Windows-1254** (Türkçe Excel) kodlamaları
+- Boş ve hayalet satır/sütunları, **TOPLAM / GENEL TOPLAM / TOTAL / AVERAGE** özet satırlarını çıkarma (çift saymayı önler)
+- Kolon adlarını sorgulanabilir yapma (`Tutar (TL) 💰` → `tutar_tl`, tekrar edenler `tutar_tl_1`)
+- Temizlenmiş verinin **ilk 20 satırlık önizlemesi**
+
+Tabloda istenen kavram yoksa en yakın sütun kullanılır ve açıkça not düşülür (ör. "Veride il bulunmadığından ilçe bazlı gruplandı").
+
 ## Takip soruları
 
 "Bu ay en çok satan 3 ürünü göster" dedikten sonra "ve kaç adet satılmış?", "peki geçen ay?" veya "sadece kredi kartı ile ödenenler" gibi sorular önceki sorunun kapsamını (dönem, filtreler, seçilen kalemler) koruyarak cevaplanır. Bunun için yapay zekâya son 3 sorunun yalnızca **metni ve SQL'i** gider; sonuçları asla gitmez. "Yeni konu" ile bağlam sıfırlanır.

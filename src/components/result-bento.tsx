@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useRef, useState } from "react"
 import { createPortal, flushSync } from "react-dom"
-import { Check, ChevronDown, ClipboardCopy, Code2, FileImage, FileText, Sparkles } from "lucide-react"
+import { Check, ChevronDown, ClipboardCopy, Code2, FileImage, FileText, Info, Sparkles } from "lucide-react"
 import { ChartView } from "@/components/chart-view"
 import { useI18n } from "@/components/i18n-provider"
 import { MetricView } from "@/components/metric-view"
@@ -144,8 +144,17 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
               <Sparkles className="size-4" aria-hidden /> {t.result.insight}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-3">
             <p className="text-lg leading-relaxed text-pretty">{insight}</p>
+            {plan.note && (
+              // An assumption the translator made (e.g. district instead of province), shown as-is.
+              <p className="flex gap-1.5 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
+                <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+                <span>
+                  <span className="font-medium text-foreground">{t.result.note}:</span> {plan.note}
+                </span>
+              </p>
+            )}
           </CardContent>
         </Card>
 

@@ -54,16 +54,30 @@ function dashedExpr(col: string): string {
 }
 
 const PROFILE_FIELDS = [
-  "n", "int", "lead0", "dot", "amb", "tr", "usk", "stripped", "iso", "dmy", "mdy", "time", "fracDot", "fracComma",
+  "n", "int", "lead0", "dot", "amb", "tr", "usk", "stripped", "isoShape", "dmyShape", "iso", "dmy", "mdy", "time", "fracDot", "fracComma",
 ] as const
 type ProfileField = (typeof PROFILE_FIELDS)[number]
 export type ColumnProfile = Record<ProfileField, number>
 
 /** One aggregate query profiling every column. Result has fields `p{i}_{field}`. */
 export function profileSql(table: string, columns: readonly string[]): string {
-  const parts = columns.flatMap((col, i) => {
-    const v = valueExpr(col)
-    const m = moneyExpr(col)
+  // Each derived value (trimmed, money-stripped, date-normalized) is computed ONCE per
+  // cell in a CTE; the aggregates below only read it. Recomputing the regexes inside every
+  // aggregate made profiling several times slower on large files.
+  const base = columns.map((col, i) => `${valueExpr(col)} AS v${i}`).join(", ")
+  const derived = columns
+    .map((_, i) => {
+      const v = `v${i}`
+      return [
+        v,
+        `regexp_replace(${v}, '${MONEY_NOISE}', '', 'gi') AS m${i}`,
+        `regexp_replace(${v}, '^(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4})', '\\1.\\2.\\3') AS dt${i}`,
+        `regexp_replace(${v}, '^(\\d{4})[./-](\\d{1,2})[./-](\\d{1,2})', '\\1-\\2-\\3') AS ds${i}`,
+      ].join(", ")
+    })
+    .join(", ")
+  const parts = columns.flatMap((_, i) => {
+    const [v, m, dotted, dashed] = [`v${i}`, `m${i}`, `dt${i}`, `ds${i}`]
     const match = (re: string) => `count(*) FILTER (WHERE regexp_full_match(${m}, '${re}'))`
     const p = (field: ProfileField, expr: string) => `${expr} AS p${i}_${field}`
     return [
@@ -75,17 +89,57 @@ export function profileSql(table: string, columns: readonly string[]): string {
       p("tr", match(TR_RE)),
       p("usk", match(US_THOUSANDS_RE)),
       p("stripped", `count(*) FILTER (WHERE ${m} <> ${v})`),
-      p("iso", `count(*) FILTER (WHERE regexp_full_match(${dashedExpr(col)}, '${ISO_RE}') AND try_strptime(${dashedExpr(col)}, ${list(ISO_FORMATS)}) IS NOT NULL)`),
-      p("dmy", `count(*) FILTER (WHERE regexp_full_match(${dottedExpr(col)}, '${DMY_RE}') AND try_strptime(${dottedExpr(col)}, ${list(DMY_FORMATS)}) IS NOT NULL)`),
-      p("mdy", `count(*) FILTER (WHERE regexp_full_match(${dottedExpr(col)}, '${DMY_RE}') AND try_strptime(${dottedExpr(col)}, ${list(MDY_FORMATS)}) IS NOT NULL)`),
-      // Midnight-only times (typical of Excel date cells) still count as plain dates.
+      // Cheap shape checks only; real date parsing runs later, and only where every value has the shape.
+      p("isoShape", `count(*) FILTER (WHERE regexp_full_match(${dashed}, '${ISO_RE}'))`),
+      p("dmyShape", `count(*) FILTER (WHERE regexp_full_match(${dotted}, '${DMY_RE}'))`),
       // Most digits after a trailing "." / "," — the DECIMAL scale that holds every value exactly.
       p("fracDot", `coalesce(max(length(regexp_extract(${m}, '\\.(\\d+)$', 1))), 0)`),
       p("fracComma", `coalesce(max(length(regexp_extract(${m}, ',(\\d+)$', 1))), 0)`),
+      // Midnight-only times (typical of Excel date cells) still count as plain dates.
       p("time", `count(*) FILTER (WHERE ${v} LIKE '%:%' AND NOT regexp_matches(${v}, ' 0?0:00(:00(\\.0+)?)?$'))`),
     ]
   })
-  return `SELECT ${parts.join(",\n  ")} FROM ${table}`
+  return `WITH b AS (SELECT ${base} FROM ${table}), d AS (SELECT ${derived} FROM b)\nSELECT ${parts.join(",\n  ")} FROM d`
+}
+
+type DateCheck = { index: number; kind: "iso" | "dmy" | "mdy" }
+
+/** Counts values that really parse as dates, for the given columns only. */
+export function dateCheckSql(table: string, columns: readonly string[], checks: readonly DateCheck[]): string {
+  const parts = checks.map(({ index, kind }) => {
+    const col = columns[index] ?? ""
+    const expr = kind === "iso" ? dashedExpr(col) : dottedExpr(col)
+    const formats = kind === "iso" ? ISO_FORMATS : kind === "dmy" ? DMY_FORMATS : MDY_FORMATS
+    return `count(*) FILTER (WHERE try_strptime(${expr}, ${list(formats)}) IS NOT NULL) AS p${index}_${kind}`
+  })
+  return `SELECT ${parts.join(", ")} FROM ${table}`
+}
+
+/**
+ * Profiles every column with as few expensive passes as possible: one cheap pass for all
+ * counts, then date parsing only for columns whose every value already has a date shape
+ * (month-first only when day-first failed). Parsing dates was ~80% of profiling time.
+ */
+export async function profileColumns(
+  query: (sql: string) => Promise<Record<string, unknown>>,
+  table: string,
+  columns: readonly string[],
+): Promise<ColumnProfile[]> {
+  const first = await query(profileSql(table, columns))
+  const profiles = columns.map((_, i) => readProfile(first, i))
+
+  const apply = async (checks: DateCheck[]) => {
+    if (checks.length === 0) return
+    const row = await query(dateCheckSql(table, columns, checks))
+    for (const { index, kind } of checks) {
+      const p = profiles[index]
+      if (p) p[kind] = Number(row[`p${index}_${kind}`] ?? 0)
+    }
+  }
+  const all = (field: "isoShape" | "dmyShape") => profiles.flatMap((p, index) => (p.n > 0 && p[field] === p.n ? [index] : []))
+  await apply([...all("isoShape").map((index) => ({ index, kind: "iso" as const })), ...all("dmyShape").map((index) => ({ index, kind: "dmy" as const }))])
+  await apply(all("dmyShape").filter((i) => (profiles[i]?.dmy ?? 0) < (profiles[i]?.n ?? 0)).map((index) => ({ index, kind: "mdy" as const })))
+  return profiles
 }
 
 export function readProfile(row: Record<string, unknown>, index: number): ColumnProfile {

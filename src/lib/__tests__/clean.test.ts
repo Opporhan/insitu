@@ -1,6 +1,6 @@
 import { DuckDBInstance, type DuckDBConnection } from "@duckdb/node-api"
 import { beforeAll, describe, expect, it } from "vitest"
-import { buildCleanTableSql, decideColumn, profileSql, readProfile } from "@/lib/engine/clean"
+import { buildCleanTableSql, decideColumn, profileColumns } from "@/lib/engine/clean"
 
 let conn: DuckDBConnection
 
@@ -20,8 +20,8 @@ async function clean(columns: Record<string, (string | null)[]>) {
   const lit = (v: string | null) => (v === null ? "NULL" : `'${v.replace(/'/g, "''")}'`)
   const values = Array.from({ length: n }, (_, i) => `(${names.map((c) => `${lit(columns[c]?.[i] ?? null)}::VARCHAR`).join(", ")})`)
   await conn.run(`CREATE OR REPLACE TABLE raw AS SELECT * FROM (VALUES ${values.join(", ")}) t(${names.map((c) => `"${c}"`).join(", ")})`)
-  const [profileRow] = await rows(profileSql("raw", names))
-  const decisions = names.map((c, i) => decideColumn(c, readProfile(profileRow ?? {}, i)))
+  const profiles = await profileColumns(async (sql) => (await rows(sql))[0] ?? {}, "raw", names)
+  const decisions = names.map((c, i) => decideColumn(c, profiles[i]!))
   await conn.run(`DROP TABLE IF EXISTS cleaned`)
   await conn.run(buildCleanTableSql("cleaned", "raw", decisions))
   const types = Object.fromEntries((await rows("DESCRIBE cleaned")).map((r) => [r["column_name"], r["column_type"]]))
@@ -110,8 +110,8 @@ describe("exact money arithmetic", () => {
       SELECT (CAST(1000 + (i * 7919) % 2500000 AS BIGINT) // 100)::VARCHAR || ',' || lpad(((1000 + (i * 7919) % 2500000) % 100)::VARCHAR, 2, '0') || ' TL' AS tutar,
              (1000 + (i * 7919) % 2500000) AS cents
       FROM range(100000) t(i)`)
-    const [profileRow] = await rows(profileSql("raw", ["tutar"]))
-    const decision = decideColumn("tutar", readProfile(profileRow ?? {}, 0))
+    const [profile] = await profileColumns(async (sql) => (await rows(sql))[0] ?? {}, "raw", ["tutar"])
+    const decision = decideColumn("tutar", profile!)
     expect(decision.kind).toBe("tr-number")
     await conn.run("DROP TABLE IF EXISTS cleaned")
     await conn.run(buildCleanTableSql("cleaned", "raw", [decision]))

@@ -1,15 +1,19 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { FileSpreadsheet, MessagesSquare, RotateCcw, X } from "lucide-react"
 import { AskBar } from "@/components/ask-bar"
+import { DataPrepPanel } from "@/components/data-prep-panel"
 import { Dropzone } from "@/components/dropzone"
 import { useI18n } from "@/components/i18n-provider"
 import { ResultBento, type Answer } from "@/components/result-bento"
+import { SheetSelector } from "@/components/sheet-selector"
 import { Button } from "@/components/ui/button"
 import { isAccepted, loadFile, type Dataset } from "@/lib/engine/load-file"
+import { prewarmDb } from "@/lib/engine/duckdb"
 import { runQuery } from "@/lib/engine/run-query"
 import { formatCount } from "@/lib/format"
+import type { SheetInfo } from "@/lib/ingest"
 import { resolveColumns, resolveView } from "@/lib/result-view"
 import { MAX_HISTORY, TranslateResponse, type HistoryTurn, type RepairContext, type TranslateRequest } from "@/lib/schema"
 import { suggestQuestions } from "@/lib/suggestions"
@@ -32,8 +36,15 @@ export function InsituApp() {
   const answerCount = useRef(0)
   // Earlier questions + their SQL, so follow-ups ("and how many units?") keep the context.
   const [history, setHistory] = useState<HistoryTurn[]>([])
+  // Workbook with several sheets: the user picks one before anything is loaded.
+  const [sheetChoice, setSheetChoice] = useState<{ file: File; sheets: SheetInfo[] } | null>(null)
+  const [sourceFile, setSourceFile] = useState<File | null>(null)
+  const [prepOpen, setPrepOpen] = useState(true)
 
-  async function openFile(file: File) {
+  // Fetch and start the in-browser engine while the user is still choosing a file.
+  useEffect(() => prewarmDb(), [])
+
+  async function openFile(file: File, sheet?: string) {
     if (!isAccepted(file.name)) {
       setFileError(t.file.unsupported)
       return
@@ -41,9 +52,17 @@ export function InsituApp() {
     setFileLoading(true)
     setFileError(null)
     try {
-      setDataset(await loadFile(file))
+      const loaded = await loadFile(file, sheet)
+      if (loaded.kind === "sheets") {
+        setSheetChoice({ file, sheets: loaded.sheets })
+        return
+      }
+      setSheetChoice(null)
+      setSourceFile(file)
+      setDataset(loaded.dataset)
       setState({ kind: "idle" })
       setHistory([])
+      setPrepOpen(true)
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e)
       setFileError(t.file.readFailed(t.file.codes[detail] ?? detail))
@@ -124,8 +143,22 @@ export function InsituApp() {
         },
       })
       setHistory([...history, { question, sql: plan.sql }].slice(-MAX_HISTORY))
+      // The prep report has done its job once the user is asking questions; keep it one click away.
+      setPrepOpen(false)
       return
     }
+  }
+
+  if (sheetChoice) {
+    return (
+      <SheetSelector
+        fileName={sheetChoice.file.name}
+        sheets={sheetChoice.sheets}
+        loading={fileLoading}
+        onPick={(sheet) => void openFile(sheetChoice.file, sheet)}
+        onCancel={() => setSheetChoice(null)}
+      />
+    )
   }
 
   if (!dataset) {
@@ -135,7 +168,7 @@ export function InsituApp() {
           <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">{t.hero.title}</h1>
           <p className="mx-auto max-w-[60ch] text-base text-pretty text-muted-foreground">{t.hero.body}</p>
         </div>
-        <Dropzone loading={fileLoading} error={fileError} onFile={openFile} onSample={openSample} />
+        <Dropzone loading={fileLoading} error={fileError} onFile={(file) => void openFile(file)} onSample={openSample} />
       </div>
     )
   }
@@ -165,6 +198,16 @@ export function InsituApp() {
           >
             {t.dataset.cleaned(cleanedNotes.length)}
           </span>
+        )}
+        {dataset.report.sheets.length > 1 && sourceFile && (
+          <Button
+            variant="ghost"
+            className="h-11 shrink-0 px-3 text-xs"
+            disabled={busy || fileLoading}
+            onClick={() => setSheetChoice({ file: sourceFile, sheets: dataset.report.sheets })}
+          >
+            {dataset.report.sheet} · {t.sheets.change}
+          </Button>
         )}
         <Button
           variant="ghost"
@@ -198,6 +241,8 @@ export function InsituApp() {
           {state.message}
         </p>
       )}
+
+      <DataPrepPanel dataset={dataset} open={prepOpen} onOpenChange={setPrepOpen} />
 
       {busy && <div className="h-96 animate-pulse rounded-xl border bg-card" aria-label={t.ask.computing} />}
 

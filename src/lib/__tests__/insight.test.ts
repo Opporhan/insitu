@@ -13,6 +13,7 @@ function insight(p: Partial<QueryPlan>, rows: ResultRow[]) {
     yAxisKey: "v",
     seriesKey: "",
     title: "t",
+    note: "",
     columns: [
       { key: "k", label: "Şehir", format: "text", total: false },
       { key: "v", label: "Ciro", format: "currency", total: false },
@@ -135,6 +136,7 @@ describe("buildInsight (English)", () => {
       yAxisKey: "v",
       seriesKey: "",
       title: "t",
+    note: "",
       columns: [
         { key: "k", label: "City", format: "text" as const, total: false },
         { key: "v", label: "Revenue", format: "currency" as const, total: true },

@@ -121,14 +121,20 @@ scripts/
   eval.mts, questions.txt       # Soru setini gerçek Gemini + DuckDB (Node) ile uçtan uca çalıştırır
 ```
 
-### Yükleme ve temizleme
-- Dosya `prepare.worker.ts`'te hazırlanır (Excel → CSV `xlsx-to-csv.ts` ile, saat diliminden bağımsız ISO tarihler; UTF-8 değilse Windows-1254 kabul edilip dönüştürülür). Ana thread'de dosya ayrıştırma **yapma**.
+### Yükleme: Universal Ingestion Pipeline (`src/lib/ingest/`)
+Tamamı `prepare.worker.ts` içinde çalışır; ana thread'de dosya ayrıştırma **yapma**.
+1. `decode.ts`: BOM → UTF-8/UTF-16; geçerli UTF-8; BOM'suz UTF-16 (sıfır baytlar); yoksa Windows-1254.
+2. `sources.ts`: CSV/TSV PapaParse ile (`,` `;` Tab `|` sezilir). Excel SheetJS ile; tarih hücreleri seri sayıdan ISO'ya (saat dilimsiz). Birden çok dolu sekme varsa `ingest()` sekme listesi döndürür, kullanıcı seçer.
+3. `tidy.ts`: ilk 15 satırda başlık tespiti (geniş + metinsel + benzersiz + ardından veri); üstteki banner satırları atılır; boş satırlar, özet satırları (ilk hücresi tam olarak TOPLAM/GENEL TOPLAM/TOTAL/AVERAGE…), %90'dan fazlası boş satırlar ve **başlıksız** %90+ boş ya da tamamen boş sütunlar kırpılır. Başlığı olan seyrek sütun gerçek veridir, **silinmez**.
+4. Kolon adları `sanitizeName` ile DuckDB-güvenli snake_case (`Tutar (TL) 💰` → `tutar_tl`); boş → `kolon_N`, tekrar → `ad_1`, rakamla başlayan → `kolon_…`.
+5. Çıktı: RFC 4180 CSV + `IngestReport`. DuckDB bunu **sabit** lehçeyle okur (sezdirme yok). Rapor ve ilk 20 satır arayüzde "Veri hazırlama raporu" panelinde gösterilir; hiçbir değişiklik sessiz olmaz.
 - DuckDB'ye tüm sütunlar `all_varchar` ile yüklenir; `clean.ts` tek profil sorgusuyla biçime karar verir. DuckDB'nin kendi tip tahminine güvenme: Türkçe "1.250" değerini 1,25 okur.
 - Sütun yalnızca **her** değer aynı biçime uyuyorsa dönüştürülür; aksi hâlde metin kalır. Para/ondalık değerler `DECIMAL(38, ölçek)` olarak saklanır (DOUBLE toplamları kuruş kaydırır).
 - Sonuç ana thread'e en fazla `MAX_RESULT_ROWS` (10.000) satır getirilir; fazlası `complete: false` olur ve kısmi veriden grafik/toplam üretilmez.
 
 ### QueryPlan sözleşmesi
 `{ sql, chartType: "metric"|"bar"|"line"|"pie"|"table", xAxisKey, yAxisKey, seriesKey, title, columns: [{ key, label, format, total }] }`
+- `note`: modelin yaptığı varsayım (ör. "Veride il bulunmadığından ilçe bazlı gruplandı."), içgörü kartında gösterilir; veriden sayı içeremez.
 - `columns` final SELECT'teki her sütunu tanımlar; `format` ∈ `currency | integer | number | percent (0–100) | text | date | month`. Sayıların nasıl görüneceğine yalnızca bu karar verir; bileşenlerde `toLocaleString` veya elle biçimlendirme yapma, `formatValue` kullan.
 - `total`: sütunu satırlar boyunca toplamak anlamlı mı (tutar, adet evet; fiyat, ortalama, oran hayır). Tablo alt toplamı ve çubuk içgörüsündeki toplam yalnızca bunu kullanır; toplamlar `preciseSum` (`src/lib/math.ts`) ile yapılır.
 - Model sorguya kendiliğinden `LIMIT` koymaz; büyük sonuçları istemci sınırlar ve kullanıcıya söyler.

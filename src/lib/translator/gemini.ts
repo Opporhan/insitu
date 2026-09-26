@@ -89,7 +89,15 @@ Bazen yeni sorudan önce, aynı konuşmadaki önceki sorular ve onların SQL'ler
 - "Peki geçen ay?", "ya Ankara?" gibi sorularda yalnızca değişen koşulu değiştir, gerisini koru.
 - Yeni soru kendi başına anlamlı ve farklı bir konuysa geçmişi yok say.
 
-## 6. Diğer alanlar
+## 6. Eksik kavramlar ve en yakın sütun
+- Soru tabloda birebir olmayan bir kavram istiyor ama çok yakın bir karşılığı varsa o sütunu kullan ve note alanında kısaca açıkla. Örnekler:
+  - "İl" / "şehir" soruldu, tabloda yalnızca "ilçe" var → ilçeye göre grupla; note: "Veride il bulunmadığından ilçe bazlı gruplandı."
+  - "Ciro" soruldu, tutar yok ama birim fiyat ve adet var → fiyat × adet; note: "Ciro, birim fiyat × adet olarak hesaplandı."
+  - "Aylık" soruldu, tarih sütunu metin → TRY_CAST ile; note gerekmez.
+- note kısa, tek cümle ve kullanıcının dilinde olsun. İçinde veriden sayı veya sonuç yorumu OLMASIN (sonucu bilmiyorsun). Varsayım yoksa note = "".
+- Yakın bir karşılık da yoksa sql = "" yapıp explanation'da eksik bilgiyi belirt (bkz. 7).
+
+## 7. Diğer alanlar
 - title: grafiğin kısa Türkçe başlığı (en fazla 60 karakter).
 - explanation: normalde "". Soru tabloda OLMAYAN bir sütun/kavram gerektiriyorsa sql = "" yap ve explanation'da hangi bilginin eksik olduğunu nazik bir Türkçe cümleyle belirt (ör. "Tabloda müşteri memnuniyeti bilgisi bulunmuyor.").`
 
@@ -103,6 +111,7 @@ const RESPONSE_SCHEMA = {
     seriesKey: { type: "string" },
     title: { type: "string" },
     explanation: { type: "string" },
+    note: { type: "string" },
     columns: {
       type: "array",
       items: {
@@ -117,7 +126,7 @@ const RESPONSE_SCHEMA = {
       },
     },
   },
-  required: ["sql", "chartType", "xAxisKey", "yAxisKey", "seriesKey", "title", "explanation", "columns"],
+  required: ["sql", "chartType", "xAxisKey", "yAxisKey", "seriesKey", "title", "explanation", "note", "columns"],
 } as const
 
 const ModelAnswer = z.object({
@@ -128,6 +137,7 @@ const ModelAnswer = z.object({
   seriesKey: z.string(),
   title: z.string(),
   explanation: z.string(),
+  note: z.string(),
   columns: z.array(z.object({ key: z.string(), label: z.string(), format: z.string(), total: z.boolean() })),
 })
 export type ModelAnswer = z.infer<typeof ModelAnswer>
@@ -217,6 +227,7 @@ export function toPlan(answer: ModelAnswer): ReturnType<typeof QueryPlan.safePar
     seriesKey: axes && answer.chartType !== "pie" ? answer.seriesKey : "",
     title: answer.title.trim().slice(0, 120) || "Sonuç",
     columns: answer.columns,
+    note: answer.note.trim().slice(0, 240),
   })
 }
 

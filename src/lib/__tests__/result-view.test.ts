@@ -10,6 +10,7 @@ function plan(p: Partial<QueryPlan>): QueryPlan {
     yAxisKey: "v",
     seriesKey: "",
     title: "t",
+    note: "",
     columns: [
       { key: "k", label: "Kategori", format: "text", total: false },
       { key: "v", label: "Ciro", format: "currency", total: false },

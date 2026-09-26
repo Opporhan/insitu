@@ -1,7 +1,9 @@
-import type { Column, ColumnType } from "@/lib/schema"
-import { buildCleanTableSql, decideColumn, profileSql, readProfile, type CleanKind } from "./clean"
+import { extension, type IngestReport, type SheetInfo } from "@/lib/ingest"
+import { ResultRow, type Column, type ColumnType } from "@/lib/schema"
+import { buildCleanTableSql, decideColumn, profileColumns, type CleanKind } from "./clean"
 import { freshDb } from "./duckdb"
-import { extension, type PrepareRequest, type PrepareResponse } from "./prepare"
+import { normalizeSql } from "./normalize"
+import type { PrepareRequest, PrepareResponse } from "./prepare"
 
 export type Dataset = {
   fileName: string
@@ -9,9 +11,17 @@ export type Dataset = {
   columns: Column[]
   /** Columns whose representation the cleaner changed (shown to the user). */
   cleaned: { column: string; kind: CleanKind; currencyStripped: boolean }[]
+  /** What ingestion did to the raw file (header row, removed rows, renamed columns…). */
+  report: IngestReport
+  /** First rows of the cleaned table, for the data preview. */
+  preview: ResultRow[]
 }
 
-export const ACCEPTED_EXTENSIONS = [".csv", ".tsv", ".txt", ".xlsx", ".xls"] as const
+export type LoadResult = { kind: "sheets"; sheets: SheetInfo[] } | { kind: "dataset"; dataset: Dataset }
+
+export const PREVIEW_ROWS = 20
+
+export const ACCEPTED_EXTENSIONS = [".csv", ".tsv", ".txt", ".xlsx", ".xls", ".xlsm"] as const
 
 const INPUT_FILE = "input.csv"
 
@@ -19,20 +29,22 @@ export function isAccepted(name: string): boolean {
   return (ACCEPTED_EXTENSIONS as readonly string[]).includes(extension(name))
 }
 
-/** Excel parsing and re-encoding happen in a worker so large files never freeze the page. */
-function prepareInWorker(file: File): Promise<Uint8Array<ArrayBuffer>> {
+type Prepared = Exclude<PrepareResponse, { ok: false }>
+
+/** The whole ingestion pipeline runs in a worker so large files never freeze the page. */
+function prepareInWorker(file: File, sheet: string | undefined): Promise<Prepared> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("./prepare.worker.ts", import.meta.url), { type: "module" })
     worker.onmessage = (e: MessageEvent<PrepareResponse>) => {
       worker.terminate()
-      if (e.data.ok) resolve(e.data.bytes)
+      if (e.data.ok) resolve(e.data)
       else reject(new Error(e.data.error))
     }
     worker.onerror = (e) => {
       worker.terminate()
       reject(new Error(e.message || "prepare failed"))
     }
-    worker.postMessage({ file } satisfies PrepareRequest)
+    worker.postMessage((sheet === undefined ? { file } : { file, sheet }) satisfies PrepareRequest)
   })
 }
 
@@ -49,21 +61,31 @@ function toColumnType(duckType: string): ColumnType {
  * Reads a CSV/Excel file into DuckDB table `data`, entirely in the browser. All heavy
  * work runs in workers (file preparation, DuckDB); the main thread only awaits.
  */
-export async function loadFile(file: File): Promise<Dataset> {
-  const bytes = await prepareInWorker(file)
+export async function loadFile(file: File, sheet?: string): Promise<LoadResult> {
+  const prepared = await prepareInWorker(file, sheet)
+  if (prepared.kind === "sheets") return { kind: "sheets", sheets: prepared.sheets }
+
   const db = await freshDb()
-  await db.registerFileBuffer(INPUT_FILE, bytes)
+  await db.registerFileBuffer(INPUT_FILE, prepared.bytes)
   const conn = await db.connect()
   try {
-    // Every column as text first; the cleaner decides types (see clean.ts).
-    await conn.query(`CREATE TABLE raw AS SELECT * FROM read_csv('${INPUT_FILE}', header = true, all_varchar = true)`)
+    // The worker produced clean RFC 4180 CSV, so the dialect is fixed rather than sniffed.
+    // Every column is text first; the cleaner decides types (see clean.ts).
+    await conn.query(
+      `CREATE TABLE raw AS SELECT * FROM read_csv('${INPUT_FILE}', header = true, all_varchar = true, delim = ',', quote = '"', escape = '"', null_padding = true)`,
+    )
     await db.dropFile(INPUT_FILE)
 
     const rawColumns = (await conn.query("DESCRIBE raw")).toArray().map((r) => String(r.toJSON().column_name))
     // Error messages that are codes get a localized text in the UI (see i18n `file.codes`).
     if (rawColumns.length === 0) throw new Error("no-columns")
-    const profileRow = (await conn.query(profileSql("raw", rawColumns))).toArray()[0]?.toJSON() ?? {}
-    const decisions = rawColumns.map((name, i) => decideColumn(name, readProfile(profileRow, i)))
+    const profiles = await profileColumns(
+      async (sql) => ((await conn.query(sql)).toArray()[0]?.toJSON() ?? {}) as Record<string, unknown>,
+      "raw",
+      rawColumns,
+    )
+    // profileColumns returns exactly one profile per column, in order.
+    const decisions = profiles.map((profile, i) => decideColumn(rawColumns[i] ?? "", profile))
     await conn.query(buildCleanTableSql("data", "raw", decisions))
     await conn.query("DROP TABLE raw")
 
@@ -73,13 +95,25 @@ export async function loadFile(file: File): Promise<Dataset> {
 
     const described = (await conn.query("DESCRIBE data")).toArray() as { column_name: string; column_type: string }[]
     const counted = (await conn.query("SELECT count(*)::INTEGER AS n FROM data")).toArray() as { n: number }[]
+    const normalized = normalizeSql(
+      `SELECT * FROM data LIMIT ${PREVIEW_ROWS}`,
+      described.map((c) => ({ name: c.column_name, type: c.column_type })),
+    )
+    const preview = normalized.ok
+      ? (await conn.query(normalized.sql)).toArray().map((r) => ResultRow.parse(r.toJSON()))
+      : []
     return {
-      fileName: file.name,
-      rowCount: counted[0]?.n ?? 0,
-      columns: described.map((c) => ({ name: c.column_name, type: toColumnType(c.column_type) })),
-      cleaned: decisions.flatMap((d) =>
-        d.converted ? [{ column: d.name, kind: d.kind, currencyStripped: d.currencyStripped }] : [],
-      ),
+      kind: "dataset",
+      dataset: {
+        fileName: file.name,
+        rowCount: counted[0]?.n ?? 0,
+        columns: described.map((c) => ({ name: c.column_name, type: toColumnType(c.column_type) })),
+        cleaned: decisions.flatMap((d) =>
+          d.converted ? [{ column: d.name, kind: d.kind, currencyStripped: d.currencyStripped }] : [],
+        ),
+        report: prepared.report,
+        preview,
+      },
     }
   } finally {
     await conn.close()

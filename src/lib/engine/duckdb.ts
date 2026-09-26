@@ -6,6 +6,8 @@ import * as duckdb from "@duckdb/duckdb-wasm"
  * Only DuckDB's engine code comes from the CDN; user data never leaves the tab.
  */
 let current: Promise<duckdb.AsyncDuckDB> | null = null
+/** An instance started ahead of time (on page load) so the first file doesn't wait for the engine. */
+let spare: Promise<duckdb.AsyncDuckDB> | null = null
 
 async function createDb(): Promise<duckdb.AsyncDuckDB> {
   const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles())
@@ -20,9 +22,20 @@ async function createDb(): Promise<duckdb.AsyncDuckDB> {
   return db
 }
 
+/** Starts downloading and instantiating DuckDB in the background, if not already done. */
+export function prewarmDb(): void {
+  if (spare) return
+  spare = createDb()
+  // A failed warm-up (e.g. offline) is not an error yet; the real load retries and reports it.
+  spare.catch(() => {
+    spare = null
+  })
+}
+
 export async function freshDb(): Promise<duckdb.AsyncDuckDB> {
   const previous = current
-  current = createDb()
+  current = spare ?? createDb()
+  spare = null
   if (previous) await (await previous).terminate()
   return current
 }
