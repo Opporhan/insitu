@@ -154,3 +154,22 @@ describe("partial results", () => {
     expect(resolveView(plan({ chartType: "line" }), rows, ["k", "v"]).kind).toBe("table")
   })
 })
+
+describe("pngPages", () => {
+  it("splits long tables into full pages plus a remainder", async () => {
+    const { pngPages } = await import("@/lib/result-view")
+    expect(pngPages(8)).toEqual([[0, 8]])
+    expect(pngPages(25)).toEqual([[0, 25]])
+    expect(pngPages(26)).toEqual([[0, 25], [25, 26]])
+    expect(pngPages(60)).toEqual([[0, 25], [25, 50], [50, 60]])
+    expect(pngPages(0)).toEqual([[0, 0]])
+  })
+
+  it("covers every row exactly once", async () => {
+    const { pngPages } = await import("@/lib/result-view")
+    const pages = pngPages(500)
+    expect(pages).toHaveLength(20)
+    expect(pages.reduce((n, [a, b]) => n + (b - a), 0)).toBe(500)
+    pages.slice(1).forEach(([a], i) => expect(a).toBe(pages[i]?.[1]))
+  })
+})

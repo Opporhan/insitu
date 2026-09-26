@@ -6,6 +6,16 @@ export const MAX_SERIES = 8
 export const MAX_BAR_CATEGORIES = 30
 export const MAX_PIE_SLICES = 7
 export const MAX_TABLE_ROWS = 500
+/** Table rows per exported PNG; a longer (scrolling) table is split into several images. */
+export const PNG_ROWS_PER_PAGE = 25
+
+/** [start, end) row ranges for exporting `rowCount` table rows as images. Always at least one page. */
+export function pngPages(rowCount: number, perPage = PNG_ROWS_PER_PAGE): [number, number][] {
+  const pages: [number, number][] = []
+  for (let start = 0; start < rowCount; start += perPage) pages.push([start, Math.min(rowCount, start + perPage)])
+  return pages.length > 0 ? pages : [[0, 0]]
+}
+
 /** More points than this makes the SVG line chart sluggish; such results are shown as a table. */
 export const MAX_LINE_POINTS = 2000
 export const OTHER_LABEL = "Diğer"

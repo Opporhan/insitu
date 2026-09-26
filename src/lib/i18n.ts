@@ -100,6 +100,8 @@ const tr = {
         : `Yapay zekâya yalnızca sorun ve ${n} sütun adı gitti:`,
     howRan: (rows: string) => `Dönen sorgu, tarayıcında DuckDB ile ${rows} satır üzerinde çalıştı:`,
     listTotal: "Listenin toplamı",
+    page: (n: number, total: number) => `Sayfa ${n}/${total}`,
+    pngPages: (n: number) => `Tabloyu ${n} PNG görseli olarak indir`,
     slices: "Dilimler",
   },
   suggestions: {
@@ -216,6 +218,8 @@ const en: Messages = {
         : `Only your question and ${n} column names were sent to the AI:`,
     howRan: (rows) => `The returned query ran in your browser with DuckDB over ${rows} rows:`,
     listTotal: "List total",
+    page: (n, total) => `Page ${n} of ${total}`,
+    pngPages: (n) => `Download the table as ${n} PNG images`,
     slices: "Slices",
   },
   suggestions: {

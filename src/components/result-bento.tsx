@@ -1,6 +1,7 @@
 "use client"
 
 import { memo, useCallback, useRef, useState } from "react"
+import { createPortal, flushSync } from "react-dom"
 import { Check, ChevronDown, ClipboardCopy, Code2, FileImage, FileText, Sparkles } from "lucide-react"
 import { ChartView } from "@/components/chart-view"
 import { useI18n } from "@/components/i18n-provider"
@@ -13,7 +14,7 @@ import { runQuery, MAX_EXPORT_ROWS } from "@/lib/engine/run-query"
 import { copyTable, downloadCsv, downloadPng } from "@/lib/export"
 import { formatCount } from "@/lib/format"
 import { buildInsight } from "@/lib/insight"
-import type { ResultView } from "@/lib/result-view"
+import { pngPages, type ResultView } from "@/lib/result-view"
 import type { Column, OutputColumn, QueryPlan, ResultRow } from "@/lib/schema"
 
 export type Answer = {
@@ -71,6 +72,29 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
   const isChart = view.kind === "bar" || view.kind === "line" || view.kind === "pie"
   const [chartReady, setChartReady] = useState(!isChart)
   const onChartReady = useCallback(() => setChartReady(true), [])
+
+  // A table taller than its scroll box is exported as several images, one per page of rows.
+  const pages = view.kind === "table" ? pngPages(view.rows.length) : [[0, 0] as [number, number]]
+  const exportRef = useRef<HTMLDivElement>(null)
+  const [exportPage, setExportPage] = useState<{ index: number; width: number } | null>(null)
+
+  async function downloadImages() {
+    const card = chartRef.current
+    if (!card) return
+    if (pages.length <= 1) return downloadPng(card, fileName)
+    const width = card.getBoundingClientRect().width
+    try {
+      for (let index = 0; index < pages.length; index++) {
+        // Render the page off screen synchronously, then capture it.
+        flushSync(() => setExportPage({ index, width }))
+        if (exportRef.current) await downloadPng(exportRef.current, `${fileName}-${index + 1}`)
+        // Spaced out so browsers treat them as separate downloads.
+        await new Promise((r) => setTimeout(r, 300))
+      }
+    } finally {
+      setExportPage(null)
+    }
+  }
 
   /**
    * Exports must contain the whole result. When the display copy was cut off, the query is
@@ -135,9 +159,10 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
               className="h-11"
               disabled={status === "exporting" || !chartReady}
               aria-busy={!chartReady}
-              onClick={() => void run(() => (chartRef.current ? downloadPng(chartRef.current, fileName) : undefined))}
+              {...(pages.length > 1 ? { "aria-label": t.result.pngPages(pages.length) } : {})}
+              onClick={() => void run(downloadImages)}
             >
-              <FileImage aria-hidden /> PNG
+              <FileImage aria-hidden /> PNG{pages.length > 1 ? ` · ${pages.length}` : ""}
             </Button>
             <Button
               variant="outline"
@@ -198,6 +223,31 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
           </Collapsible>
         </Card>
       </div>
+
+      {exportPage &&
+        view.kind === "table" &&
+        createPortal(
+          // Off-screen, same width as the on-screen card; only the inner card is captured.
+          <div aria-hidden style={{ position: "fixed", top: 0, left: -100_000, width: exportPage.width }}>
+            <Card ref={exportRef}>
+              <CardHeader>
+                <CardTitle className="text-lg tracking-tight">{plan.title}</CardTitle>
+                <CardDescription>
+                  {question} · {t.result.page(exportPage.index + 1, pages.length)}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <TableView
+                  view={view}
+                  rows={view.rows.slice(...(pages[exportPage.index] ?? [0, 0]))}
+                  scroll={false}
+                  showTotals={exportPage.index === pages.length - 1}
+                />
+              </CardContent>
+            </Card>
+          </div>,
+          document.body,
+        )}
     </section>
   )
 }
