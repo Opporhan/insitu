@@ -131,10 +131,13 @@ const tr = {
     slices: "Dilimler",
   },
   suggestions: {
-    top: (measure: string, dim: string) => `En yüksek ${measure} değerine sahip ilk 5 ${dim}`,
-    trend: (measure: string) => `Aylık ${measure} trendi`,
-    share: (dim: string, measure: string) => `${dim} bazında ${measure} dağılımı`,
-    rowCount: "kayıt sayısı",
+    // Column names never take a suffix here, so the sentences stay grammatical for any name.
+    top: (measure: string, dim: string) => `Toplam ${measure} en yüksek olan ${dim} hangisi?`,
+    trend: (measure: string) => `Toplam ${measure} aylara göre nasıl değişti?`,
+    share: (measure: string, dim: string) => `Toplam ${measure} ${dim} bazında nasıl dağılıyor?`,
+    countTop: (dim: string) => `En sık geçen ${dim} hangisi?`,
+    countTrend: "Kayıt sayısı aylara göre nasıl değişti?",
+    countShare: (dim: string) => `Kayıtlar ${dim} bazında nasıl dağılıyor?`,
   },
   insight: {
     other: "Diğer",
@@ -275,10 +278,12 @@ const en: Messages = {
     slices: "Slices",
   },
   suggestions: {
-    top: (measure, dim) => `Top 5 ${dim} by ${measure}`,
-    trend: (measure) => `Monthly ${measure} trend`,
-    share: (dim, measure) => `${measure} breakdown by ${dim}`,
-    rowCount: "record count",
+    top: (measure, dim) => `Which ${dim} has the highest total ${measure}?`,
+    trend: (measure) => `How did total ${measure} change month by month?`,
+    share: (measure, dim) => `How is total ${measure} split by ${dim}?`,
+    countTop: (dim) => `Which ${dim} appears most often?`,
+    countTrend: "How did the number of records change month by month?",
+    countShare: (dim) => `How are the records split by ${dim}?`,
   },
   insight: {
     other: "Other",

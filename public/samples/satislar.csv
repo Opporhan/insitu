@@ -1,4 +1,4 @@
-siparis_no,tarih,musteri_id,sehir,kategori,urun_adi,adet,birim_fiyat,tutar,odeme_yontemi,durum
+Sipariş No,Tarih,Müşteri ID,Şehir,Kategori,Ürün Adı,Adet,Birim Fiyat,Tutar,Ödeme Yöntemi,Durum
 S10001,2026-01-01,M0282,İstanbul,Kozmetik,Şampuan,1,159,159,Kredi Kartı,Tamamlandı
 S10002,2026-01-01,M0096,İstanbul,Elektronik,Oyuncu Mouse,1,899,899,Kredi Kartı,Tamamlandı
 S10003,2026-01-01,M0604,İstanbul,Elektronik,Akıllı Saat,1,3499,3499,Havale/EFT,Tamamlandı

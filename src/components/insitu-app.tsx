@@ -122,7 +122,7 @@ export function InsituApp() {
         setState({
           kind: "error",
           message: t.ask.computeFailed(result.error),
-          suggestions: suggestQuestions(dataset.columns, locale),
+          suggestions: [],
         })
         return
       }
@@ -175,7 +175,10 @@ export function InsituApp() {
 
   const busy = state.kind === "asking"
   const suggestions =
-    state.kind === "idle" ? suggestQuestions(dataset.columns, locale) : state.kind === "error" ? state.suggestions : []
+    // Built here (not taken from the server) so they use the file's original headers and the current language.
+    state.kind === "idle" || state.kind === "error"
+      ? suggestQuestions(dataset.columns, locale, new Map(dataset.report.renamedColumns.map((c) => [c.to, c.from])))
+      : []
   const cleanedNotes = dataset.cleaned.map(
     (c) =>
       `${c.column}: ${[(t.dataset.cleanNotes as Partial<Record<string, string>>)[c.kind], c.currencyStripped ? t.dataset.currencyStripped : null]

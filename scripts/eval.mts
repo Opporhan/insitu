@@ -4,9 +4,13 @@
  *
  *   npm run eval -- [csv] [questions.txt] > report.jsonl
  */
-import { readFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { DuckDBInstance } from "@duckdb/node-api"
+import { buildCleanTableSql, decideColumn, profileColumns } from "@/lib/engine/clean"
 import { guardSql } from "@/lib/engine/guard"
+import { ingest } from "@/lib/ingest"
 import { normalizeSql, repairableError } from "@/lib/engine/normalize"
 import { buildInsight } from "@/lib/insight"
 import { resolveView } from "@/lib/result-view"
@@ -19,7 +23,16 @@ const questions = readFileSync(questionsPath, "utf8").split("\n").map((l) => l.t
 
 const db = await DuckDBInstance.create(":memory:")
 const conn = await db.connect()
-await conn.run(`CREATE TABLE data AS SELECT * FROM read_csv_auto('${csvPath}', header = true, sample_size = -1)`)
+// Same pipeline as the browser: ingest (header/cleanup/names) → text table → typed table.
+const fileBytes = readFileSync(csvPath)
+const ingested = ingest(csvPath, fileBytes.buffer.slice(fileBytes.byteOffset, fileBytes.byteOffset + fileBytes.byteLength))
+if (ingested.kind !== "table") throw new Error("multi-sheet workbooks: pass a CSV")
+const tidyPath = join(tmpdir(), `insitu-eval-${process.pid}.csv`)
+writeFileSync(tidyPath, ingested.csv)
+await conn.run(`CREATE TABLE raw AS SELECT * FROM read_csv('${tidyPath}', header = true, all_varchar = true, delim = ',', quote = '"', escape = '"')`)
+const rawColumns = (await conn.runAndReadAll("DESCRIBE raw")).getRowObjectsJS().map((r) => String(r["column_name"]))
+const profiles = await profileColumns(async (sql) => (await conn.runAndReadAll(sql)).getRowObjectsJS()[0] ?? {}, "raw", rawColumns)
+await conn.run(buildCleanTableSql("data", "raw", profiles.map((p, i) => decideColumn(rawColumns[i] ?? "", p))))
 
 function toType(t: string): ColumnType {
   if (/^(DATE|TIMESTAMP)/.test(t)) return "date"
