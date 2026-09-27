@@ -59,6 +59,23 @@ async function cacheFirst(request, cacheName, allowOpaque = false) {
   return response
 }
 
+/**
+ * Worker scripts: cached like other static files, but answered with a copy that has no URL of
+ * its own. A worker takes its address from the response; a cached response would carry the
+ * address without its "#params=…" part, which the bundler's worker bootstrap reads to know what
+ * to load — the worker would then wait forever. A URL-less copy keeps the requested address.
+ */
+async function workerScript(request) {
+  const cache = await caches.open(APP)
+  let response = await cache.match(request)
+  if (!response) {
+    response = await fetch(request)
+    if (response.ok && response.type === "basic") await cache.put(request, response.clone())
+  }
+  if (!response.ok) return response
+  return new Response(await response.blob(), { status: response.status, statusText: response.statusText, headers: response.headers })
+}
+
 async function staleWhileRevalidate(request) {
   const cache = await caches.open(APP)
   const cached = await cache.match(request)
@@ -79,6 +96,7 @@ self.addEventListener("fetch", (event) => {
   if (url.origin === self.location.origin) {
     if (url.pathname.startsWith("/api/")) return // the translator is never cached
     if (request.mode === "navigate") return event.respondWith(networkFirstPage(request))
+    if (request.destination === "worker" || request.destination === "sharedworker") return event.respondWith(workerScript(request))
     if (url.pathname.startsWith("/_next/static/")) return event.respondWith(cacheFirst(request, APP))
     if (/^\/(fonts|samples)\//.test(url.pathname) || /\.(svg|png|ico|webmanifest)$/.test(url.pathname)) {
       return event.respondWith(staleWhileRevalidate(request))
