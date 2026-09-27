@@ -1,5 +1,7 @@
 # insitu.
 
+[![CI](https://github.com/Opporhan/insitu/actions/workflows/ci.yml/badge.svg)](https://github.com/Opporhan/insitu/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 [Türkçe](README.tr.md) · **English**
 
 **Talk to your table.** Drop a CSV or Excel file, ask the way you'd ask a colleague, and get a presentation-ready chart plus a one-sentence insight in seconds. Your data never leaves your device.
@@ -78,7 +80,7 @@ Turkish / English UI · Dark (default) and light theme · Next.js 16 (App Router
 
 ```bash
 npm install
-echo "GEMINI_API_KEY=your-key" > .env.local   # without it, a rule-based fallback translator is used
+cp .env.example .env.local   # add GEMINI_API_KEY; without it, a rule-based fallback translator is used
 npm run dev                                    # http://localhost:3000
 ```
 
@@ -120,3 +122,16 @@ The project was built with skills in `.claude/skills/`. `ui-ux-pro-max` and `nex
 git clone --depth 1 https://github.com/SpillwaveSolutions/mastering-typescript-skill /tmp/mts
 cp -R /tmp/mts/mastering-typescript .claude/skills/
 ```
+
+## Contributing
+
+Issues and pull requests are welcome.
+
+1. Fork the repo and create a branch.
+2. `cp .env.example .env.local` and add a Gemini key (free at [Google AI Studio](https://aistudio.google.com/apikey)).
+3. Make your change; keep `npm run typecheck`, `npm run lint` and `npm test` green (CI runs them on every pull request). If you change the prompt, run `npm run eval` too.
+4. Follow the privacy boundary and rules in [`CLAUDE.md`](CLAUDE.md): row data must never leave the browser.
+
+## License
+
+[MIT](LICENSE) © 2026 Orhan Özkan — free to use, modify and distribute, including commercially, as long as the copyright notice is kept. Third-party skills under `.claude/skills/` keep their own licenses.

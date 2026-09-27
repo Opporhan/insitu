@@ -1,5 +1,7 @@
 # insitu.
 
+[![CI](https://github.com/Opporhan/insitu/actions/workflows/ci.yml/badge.svg)](https://github.com/Opporhan/insitu/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 **Türkçe** · [English](README.md)
 
 **Tablonla konuş.** CSV veya Excel dosyanı bırak, sorunu bir iş arkadaşına sorar gibi yaz; saniyeler içinde sunuma hazır bir grafik ve tek cümlelik bir içgörü al. Verin bu cihazdan hiç çıkmaz.
@@ -78,7 +80,7 @@ Türkçe / İngilizce arayüz (sağ üstten) · Karanlık (varsayılan) ve aydı
 
 ```bash
 npm install
-echo "GEMINI_API_KEY=anahtarın" > .env.local   # yoksa kural tabanlı yedek çevirmen devreye girer
+cp .env.example .env.local   # GEMINI_API_KEY ekle; yoksa kural tabanlı yedek çevirmen devreye girer
 npm run dev                                     # http://localhost:3000
 ```
 
@@ -120,3 +122,16 @@ Proje `.claude/skills/` altındaki skill'lerle geliştirildi. `ui-ux-pro-max` ve
 git clone --depth 1 https://github.com/SpillwaveSolutions/mastering-typescript-skill /tmp/mts
 cp -R /tmp/mts/mastering-typescript .claude/skills/
 ```
+
+## Katkıda bulunma
+
+Issue ve pull request'ler memnuniyetle karşılanır.
+
+1. Repoyu fork'la ve bir dal aç.
+2. `cp .env.example .env.local` ve bir Gemini anahtarı ekle ([Google AI Studio](https://aistudio.google.com/apikey)'da ücretsiz).
+3. Değişikliğini yap; `npm run typecheck`, `npm run lint` ve `npm test` yeşil kalsın (CI her pull request'te bunları çalıştırır). Prompt'u değiştirdiysen `npm run eval` da çalıştır.
+4. [`CLAUDE.md`](CLAUDE.md) içindeki gizlilik sınırına ve kurallara uy: satır verisi asla tarayıcıdan çıkmamalı.
+
+## Lisans
+
+[MIT](LICENSE) © 2026 Orhan Özkan — telif notu korunduğu sürece ticari kullanım dahil serbestçe kullanılabilir, değiştirilebilir ve dağıtılabilir. `.claude/skills/` altındaki üçüncü taraf skill'ler kendi lisanslarına tabidir.
