@@ -98,6 +98,10 @@ const tr = {
     cancel: "Vazgeç",
     change: "Sekme değiştir",
   },
+  offline: {
+    banner:
+      "İnternet bağlantın yok. Dosya açma, hesaplama, kayıtlı soruları geri yükleme, SQL'i elle çalıştırma ve indirmeler çalışır; yeni bir soruyu çevirmek için bağlantı gerekir.",
+  },
   share: {
     button: "Paylaş",
     buttonHint: "Bu oturumdaki soruları ve sorguları bir bağlantıyla paylaş (veri eklenmez)",
@@ -238,6 +242,7 @@ const tr = {
     computeFailed: "Bu soru hesaplanamadı. Soruyu biraz farklı sözcüklerle tekrar sormayı dene.",
     timeout: "Yanıt çok uzun sürdü; yapay zekâ şu an yoğun olabilir. Birazdan tekrar dene.",
     retry: "Tekrar dene",
+    offline: "İnternet bağlantın yok; soruyu çevirmek için bağlantı gerekiyor. Bu arada kayıtlı soruları geri yükleyebilir veya SQL'i elle çalıştırabilirsin.",
     queryTimeout: "Bu hesap çok uzun sürdüğü için durduruldu (1 dakika). Soruyu daraltmayı dene, örneğin bir tarih aralığı veya ilk 10 sonuç.",
     cancel: "Vazgeç",
     technical: "Teknik ayrıntı",
@@ -402,6 +407,10 @@ const en: Messages = {
     cancel: "Cancel",
     change: "Change sheet",
   },
+  offline: {
+    banner:
+      "You're offline. Opening files, computing, restoring saved questions, running SQL by hand and downloads all work; translating a new question needs a connection.",
+  },
   share: {
     button: "Share",
     buttonHint: "Share this session's questions and queries as a link (no data included)",
@@ -538,6 +547,7 @@ const en: Messages = {
     computeFailed: "This question couldn't be computed. Try asking it in slightly different words.",
     timeout: "The answer took too long; the AI may be busy right now. Try again in a moment.",
     retry: "Try again",
+    offline: "You're offline; translating the question needs a connection. Meanwhile you can restore saved questions or run SQL by hand.",
     queryTimeout: "This calculation took too long and was stopped (1 minute). Try narrowing the question, e.g. a date range or the top 10.",
     cancel: "Cancel",
     technical: "Technical details",

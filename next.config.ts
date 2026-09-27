@@ -23,9 +23,19 @@ const CSP = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // Versions the offline cache per deploy (see public/sw.js).
+  env: { NEXT_PUBLIC_BUILD_ID: (process.env.VERCEL_GIT_COMMIT_SHA ?? String(Date.now())).slice(0, 12) },
   async headers() {
     if (process.env.NODE_ENV !== "production") return [];
     return [
+      {
+        // The service worker must always be re-checked, so a new deploy replaces it.
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Service-Worker-Allowed", value: "/" },
+        ],
+      },
       {
         source: "/:path*",
         headers: [

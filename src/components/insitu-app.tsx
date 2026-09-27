@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Check, Copy, FileSpreadsheet, History, Layers, Link2, MessagesSquare, RotateCcw, Share2, X } from "lucide-react"
+import { Check, Copy, WifiOff, FileSpreadsheet, History, Layers, Link2, MessagesSquare, RotateCcw, Share2, X } from "lucide-react"
 import { AnswerHistory } from "@/components/answer-history"
 import { AskBar } from "@/components/ask-bar"
 import { DataPrepPanel } from "@/components/data-prep-panel"
@@ -29,6 +29,7 @@ import { buildInsight } from "@/lib/insight"
 import { loadSaved, MAX_SAVED, saveQuestions, sessionKey, type SavedQuestion } from "@/lib/session-store"
 import { decodeShare, encodeShare, SHARE_KEY } from "@/lib/share"
 import { fetchImport, resolveImportUrl } from "@/lib/url-import"
+import { useOnline } from "@/lib/use-online"
 import { followUpQuestions, readableLabel, suggestQuestions } from "@/lib/suggestions"
 import type { QueryPlan } from "@/lib/schema"
 import { QUERY_TIMEOUT, runQuery, type QueryResult } from "@/lib/engine/run-query"
@@ -54,6 +55,7 @@ export function InsituApp() {
   const [fileLoading, setFileLoading] = useState(false)
   const [progress, setProgress] = useState<PdfProgress | null>(null)
   const [linkLoading, setLinkLoading] = useState(false)
+  const online = useOnline()
   const [fileError, setFileError] = useState<string | null>(null)
   const [state, setState] = useState<AnswerState>({ kind: "idle" })
   // Every answer of this file's session stays available; one is shown in full.
@@ -355,6 +357,8 @@ export function InsituApp() {
     const fail = (message: string, suggestions: string[] = [], detail?: string) => {
       if (mine === session.current) setState({ kind: "error", message, suggestions, question, ...(detail ? { detail } : {}) })
     }
+    // Translating a question needs the network; everything else here works offline.
+    if (!navigator.onLine) return fail(t.ask.offline)
 
     let repair: RepairContext | undefined
     // One run plus one repair round for structural SQL errors (unknown column, syntax…).
@@ -540,6 +544,13 @@ export function InsituApp() {
           <X aria-hidden />
         </Button>
       </div>
+
+      {!online && (
+        <p role="status" className="flex items-start gap-2 rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground">
+          <WifiOff className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+          {t.offline.banner}
+        </p>
+      )}
 
       <AskBar busy={busy} suggestions={suggestions} suggestionsLabel={followingUp ? t.ask.followUps : t.ask.examples} onAsk={ask} />
 
