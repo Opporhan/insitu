@@ -1,5 +1,6 @@
 import { isNumericFormat } from "@/lib/format"
 import { preciseSum } from "@/lib/math"
+import { inferFormat, knownFormats, selectItems } from "@/lib/sql-select"
 import type { ChartType, OutputColumn, QueryPlan, ResultRow, ResultValue } from "@/lib/schema"
 
 export const MAX_SERIES = 8
@@ -96,6 +97,9 @@ export function planForResult(base: QueryPlan, sql: string, resultKeys: readonly
   const dateDim = dims.length === 1 && rows.every((r) => r[dims[0] ?? ""] === null || ISO_LIKE.test(String(r[dims[0] ?? ""])))
   const chartType: QueryPlan["chartType"] =
     rows.length === 1 ? "metric" : dims.length === 1 && numeric.length >= 1 ? (dateDim ? "line" : "bar") : "table"
+  // A renamed column inherits its format from what it is computed from ("SUM("tutar") AS ciro" → ₺).
+  const known = knownFormats(base.sql, base.columns)
+  const items = new Map(selectItems(sql).map((i) => [i.alias, i]))
   return {
     ...base,
     sql,
@@ -104,15 +108,18 @@ export function planForResult(base: QueryPlan, sql: string, resultKeys: readonly
     yAxisKey: chartType === "bar" || chartType === "line" ? (numeric[0] ?? "") : "",
     seriesKey: "",
     note: "",
-    columns: resultKeys.map(
-      (k) =>
-        base.columns.find((c) => c.key === k) ?? {
-          key: k,
-          label: labelFor(k),
-          format: numeric.includes(k) ? "number" : dateDim && k === dims[0] ? "date" : "text",
-          total: false,
-        },
-    ),
+    columns: resultKeys.map((k) => {
+      const earlier = base.columns.find((c) => c.key === k)
+      if (earlier) return earlier
+      const item = items.get(k)
+      const inferred = item && numeric.includes(k) ? inferFormat(item, known) : null
+      return {
+        key: k,
+        label: labelFor(k),
+        format: inferred?.format ?? (numeric.includes(k) ? "number" : dateDim && k === dims[0] ? "date" : "text"),
+        total: inferred?.total ?? false,
+      }
+    }),
   }
 }
 
