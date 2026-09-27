@@ -10,7 +10,8 @@
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
-    "eval": "tsx --env-file=.env.local scripts/eval.mts"
+    "eval": "tsx --env-file=.env.local scripts/eval.mts",
+    "eval:joins": "tsx --env-file=.env.local scripts/eval-joins.mts"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.33.1-dev57.0",

@@ -1,7 +1,21 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Check, Copy, WifiOff, FileSpreadsheet, History, Layers, Link2, MessagesSquare, RotateCcw, Share2, X } from "lucide-react"
+import {
+  Check,
+  Copy,
+  Database,
+  FileSpreadsheet,
+  History,
+  Layers,
+  Link2,
+  MessagesSquare,
+  RotateCcw,
+  Share2,
+  DatabasePlus,
+  WifiOff,
+  X,
+} from "lucide-react"
 import { AnswerHistory } from "@/components/answer-history"
 import { AskBar } from "@/components/ask-bar"
 import { DataPrepPanel } from "@/components/data-prep-panel"
@@ -12,7 +26,17 @@ import { useI18n } from "@/components/i18n-provider"
 import { ResultBento, type Answer } from "@/components/result-bento"
 import { SheetSelector } from "@/components/sheet-selector"
 import { Button } from "@/components/ui/button"
-import { isAccepted, loadFile, type Dataset } from "@/lib/engine/load-file"
+import {
+  ACCEPTED_EXTENSIONS,
+  addTableFile,
+  isAccepted,
+  loadFile,
+  MAX_LINKED_TABLES,
+  removeLinkedTable,
+  replaceMainTable,
+  type Dataset,
+  type LoadResult,
+} from "@/lib/engine/load-file"
 import { prewarmDb } from "@/lib/engine/duckdb"
 import { formatCount } from "@/lib/format"
 import type { PdfProgress, SheetInfo } from "@/lib/ingest"
@@ -30,7 +54,7 @@ import { loadSaved, MAX_SAVED, saveQuestions, sessionKey, type SavedQuestion } f
 import { decodeShare, encodeShare, SHARE_KEY } from "@/lib/share"
 import { fetchImport, resolveImportUrl } from "@/lib/url-import"
 import { useOnline } from "@/lib/use-online"
-import { followUpQuestions, readableLabel, suggestQuestions } from "@/lib/suggestions"
+import { followUpQuestions, joinSuggestion, readableLabel, suggestQuestions } from "@/lib/suggestions"
 import type { QueryPlan } from "@/lib/schema"
 import { QUERY_TIMEOUT, runQuery, type QueryResult } from "@/lib/engine/run-query"
 
@@ -55,6 +79,7 @@ export function InsituApp() {
   const [fileLoading, setFileLoading] = useState(false)
   const [progress, setProgress] = useState<PdfProgress | null>(null)
   const [linkLoading, setLinkLoading] = useState(false)
+  const [tableError, setTableError] = useState<string | null>(null)
   const online = useOnline()
   const [fileError, setFileError] = useState<string | null>(null)
   const [state, setState] = useState<AnswerState>({ kind: "idle" })
@@ -69,7 +94,9 @@ export function InsituApp() {
   // Earlier questions + their SQL, so follow-ups ("and how many units?") keep the context.
   const [history, setHistory] = useState<HistoryTurn[]>([])
   // Workbook with several sheets: the user picks one before anything is loaded.
-  const [sheetChoice, setSheetChoice] = useState<{ file: File; sheets: SheetInfo[] } | null>(null)
+  // Workbook with several sheets: which file, and whether it opens, replaces the main table's sheet, or is added.
+  const [sheetChoice, setSheetChoice] = useState<{ file: File; sheets: SheetInfo[]; mode: "open" | "change" | "add" } | null>(null)
+  const addInput = useRef<HTMLInputElement>(null)
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [prepOpen, setPrepOpen] = useState(true)
   const [overviewOpen, setOverviewOpen] = useState(true)
@@ -121,7 +148,7 @@ export function InsituApp() {
     try {
       const loaded = await loadFile(file, sheet, setProgress)
       if (loaded.kind === "sheets") {
-        setSheetChoice({ file, sheets: loaded.sheets })
+        setSheetChoice({ file, sheets: loaded.sheets, mode: "open" })
         return
       }
       setSheetChoice(null)
@@ -234,6 +261,38 @@ export function InsituApp() {
     setActiveId(answer.id)
     setState({ kind: "idle" })
     if (sql.length <= MAX_SQL_CHARS) setHistory([{ question: base.question, sql }])
+  }
+
+  /** Rebuilds the database with another file as an extra table, or another sheet as the main one. */
+  async function changeTables(action: (d: Dataset) => Promise<Dataset | LoadResult>, sheetFile?: { file: File; mode: "change" | "add" }) {
+    if (!dataset) return
+    setFileLoading(true)
+    setTableError(null)
+    setProgress(null)
+    try {
+      const result = await action(dataset)
+      const next = "kind" in result ? result : { kind: "dataset" as const, dataset: result }
+      if (next.kind === "sheets") {
+        if (sheetFile) setSheetChoice({ file: sheetFile.file, sheets: next.sheets, mode: sheetFile.mode })
+        return
+      }
+      setSheetChoice(null)
+      // Earlier answers stay: their rows are already computed and the main table is unchanged
+      // unless its sheet was replaced (then the session starts over, as for a new file).
+      if (sheetFile?.mode === "change") {
+        setAnswers([])
+        setActiveId(null)
+        setHistory([])
+      }
+      setDataset(next.dataset)
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e)
+      setSheetChoice(null)
+      setTableError(t.file.readFailed(t.file.codes[detail] ?? detail))
+    } finally {
+      setFileLoading(false)
+      setProgress(null)
+    }
   }
 
   /**
@@ -368,6 +427,8 @@ export function InsituApp() {
       const payload: TranslateRequest = {
         question,
         columns: dataset.columns,
+        // Other files as their own tables: names and columns only.
+        ...(dataset.linked.length > 0 ? { tables: dataset.linked.map((l) => ({ name: l.table, columns: l.columns })) } : {}),
         locale,
         ...(repair ? { repair } : {}),
         ...(history.length > 0 ? { history } : {}),
@@ -414,7 +475,12 @@ export function InsituApp() {
         fileName={sheetChoice.file.name}
         sheets={sheetChoice.sheets}
         loading={fileLoading}
-        onPick={(sheet) => void openFile(sheetChoice.file, sheet)}
+        onPick={(sheet) => {
+          const { file, mode } = sheetChoice
+          if (mode === "open" || !dataset) void openFile(file, sheet)
+          else if (mode === "change") void changeTables((d) => replaceMainTable(d, file, sheet, setProgress), { file, mode })
+          else void changeTables((d) => addTableFile(d, file, sheet, setProgress), { file, mode })
+        }}
         onCancel={() => setSheetChoice(null)}
       />
     )
@@ -470,6 +536,14 @@ export function InsituApp() {
         : state.kind === "error" || (state.kind === "idle" && answers.length === 0)
           ? suggestQuestions(dataset.columns, locale, originals)
           : []
+  // With an extra table that shares a key with data, a comparison question comes first.
+  const join = joinSuggestion(
+    dataset.columns,
+    dataset.linked.map((l) => ({ columns: l.columns, originals: new Map(l.report.renamedColumns.map((c) => [c.to, c.from])) })),
+    locale,
+    originals,
+  )
+  const shownSuggestions = join && state.kind !== "asking" ? [join, ...suggestions.filter((q) => q !== join)].slice(0, 4) : suggestions
   const sheetLabel = dataset.report.pdf
     ? `${t.sheets.pdfTable(dataset.report.sheet ?? "", dataset.report.pdf.tablePages)} · ${t.sheets.pdfChange}`
     : `${dataset.report.sheet} · ${t.sheets.change}`
@@ -506,12 +580,41 @@ export function InsituApp() {
             disabled={busy || fileLoading}
             aria-label={sheetLabel}
             title={sheetLabel}
-            onClick={() => setSheetChoice({ file: sourceFile, sheets: dataset.report.sheets })}
+            onClick={() => setSheetChoice({ file: sourceFile, sheets: dataset.report.sheets, mode: "change" })}
           >
             <Layers className="sm:hidden" aria-hidden />
             <span className="hidden sm:inline">{sheetLabel}</span>
           </Button>
         )}
+        <input
+          ref={addInput}
+          type="file"
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden
+          accept={ACCEPTED_EXTENSIONS.join(",")}
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ""
+            if (!file) return
+            if (!isAccepted(file.name)) {
+              setTableError(t.file.unsupported)
+              return
+            }
+            void changeTables((d) => addTableFile(d, file, undefined, setProgress), { file, mode: "add" })
+          }}
+        />
+        <Button
+          variant="ghost"
+          className="h-11 min-w-11 shrink-0 px-3 text-xs"
+          disabled={busy || fileLoading || dataset.linked.length >= MAX_LINKED_TABLES}
+          aria-label={t.tables.addHint}
+          title={dataset.linked.length >= MAX_LINKED_TABLES ? t.tables.limit(MAX_LINKED_TABLES) : t.tables.addHint}
+          onClick={() => addInput.current?.click()}
+        >
+          <DatabasePlus aria-hidden />
+          <span className="hidden sm:inline">{t.tables.add}</span>
+        </Button>
         {answers.length > 0 && (
           <Button
             variant="ghost"
@@ -552,7 +655,41 @@ export function InsituApp() {
         </p>
       )}
 
-      <AskBar busy={busy} suggestions={suggestions} suggestionsLabel={followingUp ? t.ask.followUps : t.ask.examples} onAsk={ask} />
+      {(dataset.linked.length > 0 || tableError || (fileLoading && !sheetChoice)) && (
+        <div className="-mt-3 flex flex-col gap-1.5 text-xs text-muted-foreground">
+          {dataset.linked.length > 0 && (
+            <ul className="flex flex-wrap items-center gap-1.5" aria-label={t.tables.listLabel}>
+              <li className="inline-flex items-center gap-1">
+                <Database className="size-3.5 text-primary" aria-hidden /> {t.tables.main}
+              </li>
+              {dataset.linked.map((l) => (
+                <li key={l.table} className="inline-flex items-center gap-1 rounded-full border bg-card py-0.5 pr-1 pl-3" title={l.fileName}>
+                  <span className="font-mono">{l.table}</span>
+                  <span>· {t.dataset.summary(formatCount(l.rowCount, locale), l.columns.length)}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="-my-2 size-11 rounded-full"
+                    disabled={busy || fileLoading}
+                    aria-label={t.tables.remove(l.table)}
+                    onClick={() => void changeTables((d) => removeLinkedTable(d, l.table))}
+                  >
+                    <X aria-hidden />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {fileLoading && !sheetChoice && <span aria-live="polite">{t.tables.working}</span>}
+          {tableError && (
+            <span role="alert" className="text-destructive">
+              {tableError}
+            </span>
+          )}
+        </div>
+      )}
+
+      <AskBar busy={busy} suggestions={shownSuggestions} suggestionsLabel={followingUp ? t.ask.followUps : t.ask.examples} onAsk={ask} />
 
       {/* Announces each new answer to screen readers (the region exists before its text changes). */}
       <p className="sr-only" aria-live="polite">

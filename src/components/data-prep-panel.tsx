@@ -141,47 +141,21 @@ export function DataPrepPanel({ dataset, open, onOpenChange }: Props) {
             {dataset.profile.length > 0 && (
               <div className="flex flex-col gap-1.5">
                 <span className="text-muted-foreground">{p.profileTitle}</span>
-                <div className="max-h-80 overflow-auto rounded-lg border">
-                  <Table>
-                    <TableHeader className="sticky top-0 bg-card">
-                      <TableRow>
-                        <TableHead>{p.profileCols.column}</TableHead>
-                        <TableHead>{p.profileCols.type}</TableHead>
-                        <TableHead className="text-right">{p.profileCols.filled}</TableHead>
-                        <TableHead className="text-right">{p.profileCols.distinct}</TableHead>
-                        <TableHead>{p.profileCols.values}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {dataset.profile.map((c) => {
-                        const fmt = c.type === "number" ? "number" : c.type === "date" ? "date" : "text"
-                        const values =
-                          c.type === "text"
-                            ? c.top.map((v) => p.topValue(v.value, formatCount(v.count, locale))).join(" · ")
-                            : c.min !== null && c.max !== null
-                              ? p.range(formatValue(c.min, fmt, false, locale), formatValue(c.max, fmt, false, locale))
-                              : "—"
-                        return (
-                          <TableRow key={c.name}>
-                            <TableCell className="font-mono text-xs" title={originals.get(c.name) ?? c.name}>
-                              {c.name}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">{p.types[c.type]}</TableCell>
-                            <TableCell className="text-right font-mono tabular-nums">
-                              {formatRatio(dataset.rowCount > 0 ? c.filled / dataset.rowCount : 0, locale)}
-                            </TableCell>
-                            <TableCell className="text-right font-mono tabular-nums">{formatCount(c.distinct, locale)}</TableCell>
-                            <TableCell className="max-w-[28rem] truncate" title={values}>
-                              {values}
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
+                <ColumnSummaryTable profile={dataset.profile} rowCount={dataset.rowCount} originals={originals} />
               </div>
             )}
+            {dataset.linked.map((l) => (
+              <div key={l.table} className="flex flex-col gap-1.5">
+                <span className="text-muted-foreground">
+                  {p.linkedTitle(l.table, l.fileName, formatCount(l.rowCount, locale))}
+                </span>
+                <ColumnSummaryTable
+                  profile={l.profile}
+                  rowCount={l.rowCount}
+                  originals={new Map(l.report.renamedColumns.map((c) => [c.to, c.from]))}
+                />
+              </div>
+            ))}
             <div className="flex flex-col gap-1.5">
               <span className="text-muted-foreground">{p.previewTitle(dataset.preview.length)}</span>
               <TableView view={preview} />
@@ -190,5 +164,58 @@ export function DataPrepPanel({ dataset, open, onOpenChange }: Props) {
         </CollapsibleContent>
       </Collapsible>
     </Card>
+  )
+}
+
+/** Per-column summary of one table: type, filled share, distinct values, range or top values. */
+function ColumnSummaryTable({
+  profile,
+  rowCount,
+  originals,
+}: {
+  profile: Dataset["profile"]
+  rowCount: number
+  originals: ReadonlyMap<string, string>
+}) {
+  const { t, locale } = useI18n()
+  const p = t.prep
+  return (
+    <div className="max-h-80 overflow-auto rounded-lg border">
+      <Table>
+        <TableHeader className="sticky top-0 bg-card">
+          <TableRow>
+            <TableHead>{p.profileCols.column}</TableHead>
+            <TableHead>{p.profileCols.type}</TableHead>
+            <TableHead className="text-right">{p.profileCols.filled}</TableHead>
+            <TableHead className="text-right">{p.profileCols.distinct}</TableHead>
+            <TableHead>{p.profileCols.values}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {profile.map((c) => {
+            const fmt = c.type === "number" ? "number" : c.type === "date" ? "date" : "text"
+            const values =
+              c.type === "text"
+                ? c.top.map((v) => p.topValue(v.value, formatCount(v.count, locale))).join(" · ")
+                : c.min !== null && c.max !== null
+                  ? p.range(formatValue(c.min, fmt, false, locale), formatValue(c.max, fmt, false, locale))
+                  : "—"
+            return (
+              <TableRow key={c.name}>
+                <TableCell className="font-mono text-xs" title={originals.get(c.name) ?? c.name}>
+                  {c.name}
+                </TableCell>
+                <TableCell className="text-muted-foreground">{p.types[c.type]}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums">{formatRatio(rowCount > 0 ? c.filled / rowCount : 0, locale)}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums">{formatCount(c.distinct, locale)}</TableCell>
+                <TableCell className="max-w-[28rem] truncate" title={values}>
+                  {values}
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
+    </div>
   )
 }

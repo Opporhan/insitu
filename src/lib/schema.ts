@@ -44,12 +44,21 @@ export type HistoryTurn = z.infer<typeof HistoryTurn>
 
 export const MAX_HISTORY = 3
 
+/** Another loaded file, as its own table next to `data`: its name and columns only. */
+export const TableRef = z.strictObject({
+  name: z.string().regex(COLUMN_NAME),
+  columns: z.array(Column).min(1).max(200),
+})
+export type TableRef = z.infer<typeof TableRef>
+
 export const TranslateRequest = z.strictObject({
   question: z.string().trim().min(2).max(500),
   columns: z.array(Column).min(1).max(200),
   repair: RepairContext.optional(),
   /** Earlier turns, oldest first. */
   history: z.array(HistoryTurn).max(MAX_HISTORY).optional(),
+  /** Extra tables (other files), names and columns only; never rows. */
+  tables: z.array(TableRef).max(3).optional(),
   /** UI language: the plan's title, labels and explanations are written in it. */
   locale: z.enum(LOCALES).optional(),
 })

@@ -102,7 +102,19 @@ Bazen yeni sorudan önce, aynı konuşmadaki önceki sorular ve onların SQL'ler
 
 ## 7. Diğer alanlar
 - title: grafiğin kısa Türkçe başlığı (en fazla 60 karakter).
-- explanation: normalde "". Soru tabloda OLMAYAN bir sütun/kavram gerektiriyorsa sql = "" yap ve explanation'da hangi bilginin eksik olduğunu nazik bir Türkçe cümleyle belirt (ör. "Tabloda müşteri memnuniyeti bilgisi bulunmuyor.").`
+- explanation: normalde "". Soru tabloda OLMAYAN bir sütun/kavram gerektiriyorsa sql = "" yap ve explanation'da hangi bilginin eksik olduğunu nazik bir Türkçe cümleyle belirt (ör. "Tabloda müşteri memnuniyeti bilgisi bulunmuyor.").
+
+## 8. Birden fazla tablo (yalnızca "Ek tablolar" verildiyse)
+- Ana tablo her zaman data'dır. Ek tabloları yalnızca soru onları gerektiriyorsa kullan (ör. satışları hedeflerle karşılaştırmak); gerekmiyorsa yalnızca data ile yanıtla.
+- Ek tablo adlarını da çift tırnakla yaz: FROM "hedefler".
+- Tablolar ancak ortak bir anahtar sütunla birleştirilebilir (aynı veya açıkça aynı anlama gelen ad: "sehir" ↔ "sehir", "sube_adi" ↔ "sube"). Uygun anahtar yoksa BİRLEŞTİRME: sql = "" ve explanation'da tabloları birleştirecek ortak bir sütun olmadığını söyle.
+- ÇİFT SAYIMA DİKKAT: Birleştirmeden ÖNCE her tabloyu birleştirme anahtarına göre AYRI ayrı topla (her biri için ayrı bir CTE), sonra toplanmış sonuçları birleştir. Ham satırları doğrudan JOIN edip sonra SUM yapma: bir tarafın satırları çoğalır ve toplam katlanır.
+  Doğru: WITH s AS (SELECT "sehir", SUM("tutar") AS ciro FROM data GROUP BY 1), h AS (SELECT "sehir", SUM("hedef") AS hedef FROM "hedefler" GROUP BY 1) SELECT s."sehir" AS sehir, s.ciro, h.hedef, 100.0 * s.ciro / NULLIF(h.hedef, 0) AS gerceklesme FROM s LEFT JOIN h ON s."sehir" = h."sehir" ORDER BY s.ciro DESC
+- Anahtar değerlerinin yazımı iki tabloda farklı olabilir (büyük/küçük harf, boşluk): gerekiyorsa lower(trim(...)) ile eşleştir.
+- Eşleşmeyen satırlar sessizce kaybolmasın: ana tablodan LEFT JOIN kullan; hedefi olmayan satırlarda hedef NULL görünür.
+- Anahtar iki tabloda farklı tipteyse (ör. bir tabloda ay tarih, diğerinde 'YYYY-MM' metni) ikisini aynı biçime çevirerek eşleştir: strftime(date_trunc('month', "t"), '%Y-%m').
+- "Hangi şehirler hedefini tutturdu/aştı/geride kaldı" gibi sorular koşulu sağlayanları ister: toplanmış sonuçlar üzerinde WHERE ile süz (ör. WHERE s.ciro >= h.hedef); karşılaştırma için ciro, hedef ve oranı da göster.
+- Sonuç sütunlarını her zamanki gibi tanımla (columns); oranlar percent, tutarlar currency.`
 
 const RESPONSE_SCHEMA = {
   type: "object",
@@ -156,8 +168,13 @@ const LANGUAGE_RULE = {
   en: "Response language: English. Write title, columns[].label, explanation and any label text you create inside the SQL (e.g. CASE results such as 'Weekend') in English. Values that come from the data (city or product names used in filters) stay exactly as the user wrote them.",
 } as const
 
-function userPrompt({ question, columns, repair, history, locale = "tr" }: TranslateRequest, problem: string | null): string {
+function userPrompt({ question, columns, tables, repair, history, locale = "tr" }: TranslateRequest, problem: string | null): string {
   const list = columns.map((c) => `- "${c.name}" (${c.type})`).join("\n")
+  const extra = tables?.length
+    ? `\n\nEk tablolar (yalnızca gerekirse, bkz. bölüm 8):${tables
+        .map((t) => `\nTablo: "${t.name}"\n${t.columns.map((c) => `- "${c.name}" (${c.type})`).join("\n")}`)
+        .join("\n")}`
+    : ""
   const context = history?.length
     ? `\n\nÖnceki konuşma (eskiden yeniye; sonuç değerleri gönderilmez):\n${history
         .map((h, i) => `${i + 1}) Soru: <soru>${h.question.replace(/<\/?soru>/gi, "")}</soru>\n   SQL: ${h.sql.replace(/\s+/g, " ")}`)
@@ -165,7 +182,7 @@ function userPrompt({ question, columns, repair, history, locale = "tr" }: Trans
     : "\n\nSoru:"
   // The user's words sit between markers; the system prompt says text inside them is a question
   // to translate, never an instruction to follow.
-  let prompt = `${LANGUAGE_RULE[locale]}\n\nTablo: data\nSütunlar:\n${list}${context} <soru>${question.replace(/<\/?soru>/gi, "")}</soru>`
+  let prompt = `${LANGUAGE_RULE[locale]}\n\nTablo: data\nSütunlar:\n${list}${extra}${context} <soru>${question.replace(/<\/?soru>/gi, "")}</soru>`
   const fix = problem ?? (repair ? `Önceki SQL tarayıcıda şu hatayı verdi: ${repair.error}\nÖnceki SQL:\n${repair.sql}` : null)
   if (fix) prompt += `\n\nDÜZELTME GEREKİYOR. ${fix}\nAynı soruyu, bu sorunu gideren yeni bir planla yanıtla.`
   return prompt

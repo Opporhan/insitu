@@ -148,3 +148,32 @@ export function suggestQuestions(
   }
   return out
 }
+
+/**
+ * With a second table that shares a category column with `data` (e.g. "sehir") and has a
+ * number of its own (e.g. "hedef_tl"): a question comparing the two. Null when there is no
+ * shared key — the tables cannot be combined then.
+ */
+export function joinSuggestion(
+  columns: readonly Column[],
+  linked: readonly { columns: readonly Column[]; originals: ReadonlyMap<string, string> }[],
+  locale: Locale = DEFAULT_LOCALE,
+  originals: ReadonlyMap<string, string> = new Map(),
+): string | null {
+  const t = messages[locale]
+  const numbers = columns.filter((c) => c.type === "number" && !isIdLike(c.name))
+  const measure = numbers.find((c) => AMOUNT_LIKE.test(fold(c.name))) ?? numbers[0]
+  if (!measure) return null
+  for (const other of linked) {
+    const key = columns.find((c) => c.type === "text" && !isIdLike(c.name) && other.columns.some((o) => o.name === c.name && o.type === "text"))
+    const value = other.columns.find((c) => c.type === "number" && !isIdLike(c.name))
+    if (key && value) {
+      return t.tables.compare(
+        humanize(key.name, originals.get(key.name), locale),
+        t.suggestions.total(humanize(measure.name, originals.get(measure.name), locale)),
+        t.suggestions.total(humanize(value.name, other.originals.get(value.name), locale)),
+      )
+    }
+  }
+  return null
+}

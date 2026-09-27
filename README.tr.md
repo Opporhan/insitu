@@ -55,6 +55,15 @@ PDF'ler **tamamen tarayıcıda** okunur; dosya hiçbir yere yüklenmez, yapay ze
 
 Tabloda istenen kavram yoksa en yakın sütun kullanılır ve açıkça not düşülür (ör. "Veride il bulunmadığından ilçe bazlı gruplandı").
 
+## İlk bakış, rapor, paylaşım, internetsiz
+
+- **İlk bakış:** Dosya açılır açılmaz yerel ve kesin sorgularla toplam, en büyük paylar, en iyi ay ve *tam* aylar arasındaki değişim (yarım kalan son ay asla karşılaştırılmaz), iade/iptal oranı; ayrıca olağandışı yüksek değerler, sıra dışı aylar, negatif değerler ve birebir tekrar eden satırlar için uyarılar gösterilir. Her maddeye tıklayınca grafiği gelir.
+- **Birden fazla dosya birlikte:** "Tablo ekle" başka bir dosyayı (ör. hedefler) ayrı bir tablo olarak yükler; sorular ikisini birleştirebilir ("şehir bazında ciro ve hedefi karşılaştır"). Yapay zekâ yalnızca tablo ve sütun adlarını görür; birleştirmeden önce her tabloyu ayrı toplar (toplamlar birleştirme yüzünden katlanmaz), ortak anahtar yoksa birleştirmeyi reddeder.
+- **PDF rapor:** "Rapora ekle" ile analizler toplanır; "PDF indir" raporu tarayıcıda oluşturur: içindekilerli kapak, ardından her analizin grafiği veya tablosu, sorusu, içgörüsü ve notları gerçek metin olarak (Noto Sans, SIL OFL, projeye dahil).
+- **Paylaşım bağlantısı:** Oturumdaki sorular ve sorgular (veri değil) bağlantının `#` sonrası kısmında paylaşılır; bu kısım hiçbir sunucuya gitmez. Alan kişi kendi dosyasını yükler, analizler onun tarayıcısında çalışır.
+- **Bağlantıdan açma:** Google Sheets (tüm sekmeler, gerçek türler) veya GitHub'daki CSV/Excel/PDF dosyası doğrudan tarayıcıya indirilir — Insitu sunucusundan geçmez.
+- **İnternetsiz:** Bir kez açıldıktan sonra uygulama yüklenebilir; bağlantı olmadan açılır, dosya okur ve hesaplar (hizmet çalışanı kodu ve motorları önbelleğe alır, veriyi asla). Yeni bir soruyu çevirmek için bağlantı gerekir.
+
 ## Cevaplarla çalışmak
 
 - **Sütun özeti:** Yüklemeden sonra her sütunun türü, doluluk oranı, farklı değer sayısı, aralığı ve en sık değerleri (tarayıcıda hesaplanır).
@@ -110,6 +119,7 @@ npm run dev                                     # http://localhost:3000
 |---|---|
 | `npm test` | Birim testleri (biçimlendirme, temizleme — gerçek DuckDB ile, görünüm, içgörü, guard, şema) |
 | `npm run eval` | `scripts/questions.txt` içindeki 67 soruyu (bazıları çok turlu) gerçek Gemini + DuckDB ile uçtan uca çalıştırır |
+| `npm run eval:joins` | İki tablolu kontroller (satışlar + aylık hedefler), çift sayım tuzağı dahil, referans sorgularla karşılaştırılır |
 | `npm run typecheck` · `npm run lint` · `npm run build` | Tip denetimi, lint, üretim derlemesi |
 
 ## Vercel'e yayınlama

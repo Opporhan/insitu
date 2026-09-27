@@ -77,6 +77,7 @@ const tr = {
       "url-private": "Tablo herkese açık değil. Google Sheets'te Paylaş → “Bağlantıya sahip olan herkes” → Görüntüleyen yap ve tekrar dene.",
       "url-failed": "Bağlantıdaki dosya indirilemedi; bağlantıyı ve internetini kontrol et.",
       "url-too-large": "Bağlantıdaki dosya çok büyük (en fazla 200 MB).",
+      "too-many-tables": "En fazla 3 ek tablo eklenebilir; önce birini kaldır.",
       "pdf-no-table": "PDF'te tablo bulunamadı. Satır ve sütunlardan oluşan bir tablo içeren bir PDF dene.",
       "pdf-password": "PDF parola korumalı. Parolasız bir kopyasını yükle.",
       "pdf-invalid": "PDF açılamadı; dosya bozuk olabilir.",
@@ -97,6 +98,18 @@ const tr = {
     size: (rows: string, columns: number) => `${rows} dolu satır · ${columns} sütun`,
     cancel: "Vazgeç",
     change: "Sekme değiştir",
+  },
+  tables: {
+    add: "Tablo ekle",
+    addHint: "Başka bir dosyayı ayrı bir tablo olarak ekle (ör. hedefler); sorular iki tabloyu birlikte kullanabilir",
+    limit: (n: number) => `En fazla ${n} ek tablo eklenebilir`,
+    listLabel: "Yüklü tablolar",
+    main: "data +",
+    remove: (name: string) => `“${name}” tablosunu kaldır`,
+    working: "Tablolar tarayıcında hazırlanıyor…",
+    // "Toplam tutar" is our own wording, so lower-casing its first letter mid-sentence is safe.
+    compare: (dim: string, measure: string, other: string) =>
+      `${capitalize(dim, "tr")} bazında ${measure.replace(/^Toplam/, "toplam")} ve ${other.replace(/^Toplam/, "toplam")} karşılaştırması`,
   },
   offline: {
     banner:
@@ -179,6 +192,7 @@ const tr = {
     title: "Veri hazırlama raporu ve önizleme",
     previewTitle: (n: number) => `Temizlenmiş verinin ilk ${n} satırı`,
     profileTitle: "Sütun özeti (tarayıcında hesaplandı)",
+    linkedTitle: (table: string, file: string, rows: string) => `Ek tablo “${table}” (${file}) · ${rows} satır`,
     profileCols: { column: "Sütun", type: "Tür", filled: "Dolu", distinct: "Farklı değer", values: "Aralık / en sık değerler" },
     types: { number: "Sayı", text: "Metin", date: "Tarih" },
     range: (lo: string, hi: string) => `${lo} – ${hi}`,
@@ -387,6 +401,7 @@ const en: Messages = {
       "url-private": "The sheet isn't public. In Google Sheets choose Share → “Anyone with the link” → Viewer, then try again.",
       "url-failed": "The linked file couldn't be downloaded; check the link and your connection.",
       "url-too-large": "The linked file is too large (200 MB at most).",
+      "too-many-tables": "At most 3 extra tables can be added; remove one first.",
       "pdf-no-table": "No table found in the PDF. Try a PDF that contains a table of rows and columns.",
       "pdf-password": "The PDF is password-protected. Upload a copy without a password.",
       "pdf-invalid": "The PDF couldn't be opened; the file may be damaged.",
@@ -406,6 +421,16 @@ const en: Messages = {
     size: (rows, columns) => `${rows} filled rows · ${columns} columns`,
     cancel: "Cancel",
     change: "Change sheet",
+  },
+  tables: {
+    add: "Add table",
+    addHint: "Add another file as its own table (e.g. targets); questions can use both tables",
+    limit: (n) => `At most ${n} extra tables`,
+    listLabel: "Loaded tables",
+    main: "data +",
+    remove: (name) => `Remove the “${name}” table`,
+    working: "Preparing the tables in your browser…",
+    compare: (dim, measure, other) => `Compare ${measure} and ${other} by ${dim}`,
   },
   offline: {
     banner:
@@ -485,6 +510,7 @@ const en: Messages = {
     title: "Data preparation report & preview",
     previewTitle: (n) => `First ${n} rows of the cleaned data`,
     profileTitle: "Column summary (computed in your browser)",
+    linkedTitle: (table, file, rows) => `Extra table “${table}” (${file}) · ${rows} rows`,
     profileCols: { column: "Column", type: "Type", filled: "Filled", distinct: "Distinct", values: "Range / most frequent values" },
     types: { number: "Number", text: "Text", date: "Date" },
     range: (lo, hi) => `${lo} – ${hi}`,

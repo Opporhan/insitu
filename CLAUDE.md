@@ -99,6 +99,10 @@ Ayrıntılar: **`docs/design-system.md`** (renk token'ları, tipografi, grafik s
 - CSP ve güvenlik başlıkları `next.config.ts`'te (yalnızca üretim). Yeni bir dış kaynak (CDN, API) eklersen CSP'yi güncelle ve tarayıcıda konsolu kontrol et.
 - Tarayıcıda saklanan tek şey sorulan sorular ve planlardır (`src/lib/session-store.ts`); satır verisi veya sonuç asla saklanmaz.
 - Kullanıcının elle düzenlediği SQL de yalnızca `runQuery` üzerinden (guard + kilitli motor) çalışır; sunucuya gitmez. Sütun özeti (`engine/column-profile.ts`) ve .xlsx dışa aktarma (`lib/xlsx-export.ts`, istek üzerine yüklenir) tamamen yereldir.
+- Ek tablolar (`Dataset.linked`, `TableRef` şeması) yalnızca ad + sütunlarla gider; veritabanı her ekleme/çıkarmada `sources`'tan yeniden kurulur (kilitli motor yeniden açılamaz). Prompt'un 8. bölümü: birleştirmeden önce her tabloyu ayrı topla, ortak anahtar yoksa reddet. Değişiklikte `npm run eval:joins`.
+- Paylaşım bağlantısı (`lib/share.ts`) URL `#` kısmındadır, katı şemayla doğrulanır; planlar alıcının tarayıcısında guard + 60 sn zaman aşımıyla çalışır. Bağlantıdan açma (`lib/url-import.ts`) yalnızca CSP `connect-src`'deki kaynaklardan, doğrudan tarayıcıya.
+- Hizmet çalışanı (`public/sw.js`) yalnızca kod/motor önbelleğe alır, `/api` ve veriyi asla. Worker betiklerini URL'siz `Response` kopyasıyla yanıtla (Turbopack worker'ları `#params` okur).
+- İçgörüde yarım ay kuralı: tek tarih sütunu varsa aralığı (`Dataset.coverage`) bilinir; yarım ilk/son ay karşılaştırmaya alınmaz ("İlk bakış" ile aynı mantık).
 - Grafik bileşenine yeni bir prop eklerken kimliğini sabit tut (ref + `useCallback`): memo'lu grafik yeniden çizilirse Recharts etiketleri gizler ve PNG fiyatsız çıkar.
 - Tarayıcıda rastgele JS çalıştırılmaz; hesaplama motoru DuckDB-WASM + SQL'dir.
 

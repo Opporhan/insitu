@@ -55,6 +55,15 @@ PDFs are read **entirely in the browser**; the file is never uploaded and the AI
 
 When a requested concept isn't in the table, the closest column is used and a note says so (e.g. "grouped by district: no province column").
 
+## First look, reports, sharing, offline
+
+- **First look:** as soon as a file opens, exact local queries show the total, the largest shares, the best month and the change between *complete* months (a partial last month is never compared), the share of returns/cancellations, and warnings for rare extreme values, unusual months, negative values and exact duplicate rows. Click any item to see its chart.
+- **Two or more files together:** "Add table" loads another file (e.g. targets) as its own table; questions can combine them ("compare revenue and target by city"). The AI sees only table and column names; it aggregates each table before joining, so totals are never multiplied by the join, and refuses when the tables share no key.
+- **PDF report:** "Add to report" collects analyses; "Download PDF" builds a report in the browser — cover with contents, then each analysis with its chart or table, question, insight and notes as real text (Noto Sans, bundled, SIL OFL).
+- **Share link:** shares the session's questions and queries (no data) in the URL fragment, which never reaches a server. The recipient loads their own file and the analyses run in their browser.
+- **Open from a link:** Google Sheets (all sheets, real types) or a CSV/Excel/PDF file on GitHub, downloaded straight into the browser — not through Insitu's server.
+- **Offline:** after one visit the app is installable and opens, loads files and computes without a connection (a service worker caches code and engines, never data). Asking a new question needs a connection.
+
 ## Working with answers
 
 - **Column summary:** after loading, every column's type, filled share, distinct values, range and most frequent values (computed in the browser).
@@ -110,6 +119,7 @@ npm run dev                                    # http://localhost:3000
 |---|---|
 | `npm test` | Unit tests (formatting, cleaning against real DuckDB, views, insights, guard, schema, i18n) |
 | `npm run eval` | Runs the 67 questions (some multi-turn) in `scripts/questions.txt` end to end with real Gemini + DuckDB |
+| `npm run eval:joins` | Two-table checks (sales + monthly targets) against reference queries, incl. the double-counting trap |
 | `npm run typecheck` · `npm run lint` · `npm run build` | Type check, lint, production build |
 
 ## Deploy to Vercel
