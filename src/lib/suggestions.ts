@@ -108,11 +108,11 @@ export function suggestQuestions(
 
   const out: string[] = []
   if (num) {
-    // The sentences already say "toplam"/"total"; don't repeat it ("toplam ciro" → "ciro").
-    const measure = label(num).replace(/^(toplam|total)\s+/i, "") || label(num)
-    if (dim) out.push(t.top(measure, label(dim)))
-    if (date) out.push(t.trend(measure))
-    if (dim) out.push(t.share(measure, label(dim)))
+    // "Toplam tutar", but never "Toplam toplam ciro" / "Toplam satış toplamı".
+    const total = t.total(label(num))
+    if (dim) out.push(t.top(total, label(dim)))
+    if (date) out.push(t.trend(total))
+    if (dim) out.push(t.share(total, label(dim)))
   } else {
     if (dim) out.push(t.countTop(label(dim)))
     if (date) out.push(t.countTrend)

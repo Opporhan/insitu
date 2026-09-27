@@ -2,6 +2,7 @@ import { z } from "zod"
 import { guardSql } from "@/lib/engine/guard"
 import { ChartType, QueryPlan, ValueFormat, type TranslateRequest, type TranslateResponse } from "@/lib/schema"
 import { messages } from "@/lib/i18n"
+import { dedupeAdjacentWords } from "@/lib/text"
 import { suggestQuestions } from "@/lib/suggestions"
 import type { QueryTranslator } from "./types"
 
@@ -225,9 +226,10 @@ export function toPlan(answer: ModelAnswer): ReturnType<typeof QueryPlan.safePar
     xAxisKey: axes ? answer.xAxisKey : "",
     yAxisKey: axes ? answer.yAxisKey : "",
     seriesKey: axes && answer.chartType !== "pie" ? answer.seriesKey : "",
-    title: answer.title.trim().slice(0, 120) || "Sonuç",
-    columns: answer.columns,
-    note: answer.note.trim().slice(0, 240),
+    // Generated text only (never data values): drop accidental repeats like "Toplam Toplam Ciro".
+    title: dedupeAdjacentWords(answer.title.trim()).slice(0, 120) || "Sonuç",
+    columns: answer.columns.map((c) => ({ ...c, label: dedupeAdjacentWords(c.label.trim()) })),
+    note: dedupeAdjacentWords(answer.note.trim()).slice(0, 240),
   })
 }
 

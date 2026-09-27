@@ -3,6 +3,8 @@
  * `tr` (the `Messages` type), so a missing translation is a compile error.
  */
 
+import { capitalize, hasTotalWord } from "@/lib/text"
+
 export const LOCALES = ["tr", "en"] as const
 export type Locale = (typeof LOCALES)[number]
 
@@ -132,9 +134,11 @@ const tr = {
   },
   suggestions: {
     // Column names never take a suffix here, so the sentences stay grammatical for any name.
-    top: (measure: string, dim: string) => `Toplam ${measure} en yüksek olan ${dim} hangisi?`,
-    trend: (measure: string) => `Toplam ${measure} aylara göre nasıl değişti?`,
-    share: (measure: string, dim: string) => `Toplam ${measure} ${dim} bazında nasıl dağılıyor?`,
+    // `total` is the measure with "Toplam" in front unless it already contains it.
+    total: (measure: string) => (hasTotalWord(measure) ? capitalize(measure, "tr") : `Toplam ${measure}`),
+    top: (total: string, dim: string) => `${total} en yüksek olan ${dim} hangisi?`,
+    trend: (total: string) => `${total} aylara göre nasıl değişti?`,
+    share: (total: string, dim: string) => `${total} ${dim} bazında nasıl dağılıyor?`,
     countTop: (dim: string) => `En sık geçen ${dim} hangisi?`,
     countTrend: "Kayıt sayısı aylara göre nasıl değişti?",
     countShare: (dim: string) => `Kayıtlar ${dim} bazında nasıl dağılıyor?`,
@@ -147,10 +151,9 @@ const tr = {
       `Sonuç çok büyük; ilk ${n} satır gösteriliyor. Grafik ve toplamlar kısmi veriyle yanlış olacağından gösterilmiyor — soruyu daraltmayı veya gruplamayı dene.`,
     tableTruncated: (n: number) => `Sonuç ${n}'den fazla satır içeriyor; ilk ${n} satır gösteriliyor.`,
     tableRows: (n: string) => `${n} satırlık sonuç bulundu.`,
-    tableTotal: (label: string, rows: string, value: string) => {
-      const lower = label.toLocaleLowerCase("tr")
-      return `${lower.startsWith("toplam") ? label : `Toplam ${lower}`} (listelenen ${rows} satır): ${value}`
-    },
+    // No "Toplam" prefix when the label already says it ("Toplam Ciro", "Satış Toplamı").
+    tableTotal: (label: string, rows: string, value: string) =>
+      `${hasTotalWord(label) ? label : `Toplam ${label.toLocaleLowerCase("tr")}`} (listelenen ${rows} satır): ${value}`,
     pie: (name: string, share: string, value: string) => `"${name}", ${share} ile en büyük paya sahip (${value}).`,
     pieTotal: (total: string) => ` Toplam: ${total}.`,
     single: (label: string, value: string) => `${label}: ${value}.`,
@@ -278,9 +281,10 @@ const en: Messages = {
     slices: "Slices",
   },
   suggestions: {
-    top: (measure, dim) => `Which ${dim} has the highest total ${measure}?`,
-    trend: (measure) => `How did total ${measure} change month by month?`,
-    share: (measure, dim) => `How is total ${measure} split by ${dim}?`,
+    total: (measure) => (hasTotalWord(measure) ? measure : `total ${measure}`),
+    top: (total, dim) => `Which ${dim} has the highest ${total}?`,
+    trend: (total) => `How did ${total} change month by month?`,
+    share: (total, dim) => `How is ${total} split by ${dim}?`,
     countTop: (dim) => `Which ${dim} appears most often?`,
     countTrend: "How did the number of records change month by month?",
     countShare: (dim) => `How are the records split by ${dim}?`,
@@ -293,10 +297,8 @@ const en: Messages = {
       `The result is very large; showing the first ${n} rows. Charts and totals are hidden because partial data would make them wrong — try narrowing or grouping the question.`,
     tableTruncated: (n) => `The result has more than ${n} rows; showing the first ${n}.`,
     tableRows: (n) => `Found ${n} rows.`,
-    tableTotal: (label, rows, value) => {
-      const lower = label.toLocaleLowerCase("en")
-      return `${lower.startsWith("total") ? label : `Total ${lower}`} (${rows} listed rows): ${value}`
-    },
+    tableTotal: (label, rows, value) =>
+      `${hasTotalWord(label) ? label : `Total ${label.toLocaleLowerCase("en")}`} (${rows} listed rows): ${value}`,
     pie: (name, share, value) => `"${name}" has the largest share at ${share} (${value}).`,
     pieTotal: (total) => ` Total: ${total}.`,
     single: (label, value) => `${label}: ${value}.`,
