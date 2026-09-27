@@ -33,7 +33,23 @@ function points(data: readonly XYDatum[], series: readonly { key: string; label:
  * One-sentence takeaway computed locally from the actual result. The translator
  * never sees the data, so it cannot (and must not) write this sentence itself.
  */
-export function buildInsight(view: ResultView, locale: Locale = DEFAULT_LOCALE): string {
+/** First and last day of the file's date column ("YYYY-MM-DD…"), when the file has exactly one. */
+export type Coverage = { from: string; to: string }
+
+const MONTH_KEY = /^(\d{4})-(\d{2})/
+function daysIn(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate()
+}
+/** "2026-09" is partial when the data stops before its last day (or starts after its first). */
+function partialMonth(x: ResultValue, coverage: Coverage, edge: "from" | "to"): boolean {
+  const m = MONTH_KEY.exec(String(x ?? ""))
+  const c = MONTH_KEY.exec(coverage[edge])
+  if (!m || !c || m[0] !== c[0]) return false
+  const day = Number(coverage[edge].slice(8, 10))
+  return edge === "to" ? day < daysIn(Number(m[1]), Number(m[2])) : day > 1
+}
+
+export function buildInsight(view: ResultView, locale: Locale = DEFAULT_LOCALE, coverage: Coverage | null = null): string {
   const t = messages[locale].insight
   const fmt = (value: ResultValue, column: OutputColumn) => formatValue(value, column.format, false, locale)
   const ratio = (r: number) => formatRatio(r, locale)
@@ -93,7 +109,34 @@ export function buildInsight(view: ResultView, locale: Locale = DEFAULT_LOCALE):
       if (pts.length === 1) return t.single(fmt(first.x, view.x), fmt(first.value, view.y))
       if (CUMULATIVE.test(`${view.y.key} ${view.y.label}`)) return t.cumulative(fmt(last.x, view.x), fmt(last.value, view.y))
       const peak = pts.reduce((a, b) => (b.value > a.value ? b : a))
-      // A last period far below the rest is usually one that has only just started
+      // Monthly series and a known date range: a month the data only partly covers is never
+      // compared ("Ocak → Eylül" when the data stops on 24 September would be misleading).
+      const monthly = view.x.format === "month" || pts.every((p) => MONTH_KEY.test(String(p.x ?? "")))
+      if (coverage && monthly && pts.length >= 3) {
+        const startPartial = partialMonth(first.x, coverage, "from")
+        const endPartial = partialMonth(last.x, coverage, "to")
+        if (startPartial || endPartial) {
+          const from = startPartial ? (pts[1] ?? first) : first
+          const to = endPartial ? (pts[pts.length - 2] ?? last) : last
+          const c = change(from.value, to.value)
+          const text = t.trend(
+            fmt(from.x, view.x),
+            fmt(to.x, view.x),
+            fmt(from.value, view.y),
+            fmt(to.value, view.y),
+            c === null ? "" : ` (${signed(c)})`,
+            fmt(peak.x, view.x),
+            fmt(peak.value, view.y),
+          )
+          const day = (d: string) => formatValue(d.slice(0, 10), "date", false, locale)
+          return (
+            text +
+            (startPartial ? t.partialStart(fmt(first.x, view.x), day(coverage.from)) : "") +
+            (endPartial ? t.partialEnd(fmt(last.x, view.x), day(coverage.to)) : "")
+          )
+        }
+      }
+      // Otherwise: a last period far below the rest is usually one that has only just started
       // (e.g. 1 day of the month); comparing against it would report a fake collapse.
       const incomplete = pts.length >= 4 && last.value >= 0 && last.value < 0.25 * median(pts.slice(0, -1).map((p) => p.value))
       const end = incomplete ? (pts[pts.length - 2] ?? last) : last

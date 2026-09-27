@@ -148,3 +148,38 @@ describe("buildInsight (English)", () => {
     )
   })
 })
+
+describe("line insight with the file's date range", () => {
+  const monthly = (values: number[]) =>
+    resolveView(
+      {
+        sql: "",
+        chartType: "line",
+        xAxisKey: "ay",
+        yAxisKey: "ciro",
+        seriesKey: "",
+        title: "",
+        note: "",
+        columns: [
+          { key: "ay", label: "Ay", format: "month", total: false },
+          { key: "ciro", label: "Ciro", format: "currency", total: true },
+        ],
+      },
+      values.map((v, i) => ({ ay: `2026-0${i + 1}`, ciro: v })),
+      ["ay", "ciro"],
+    )
+
+  it("never compares a month the data covers only partly", () => {
+    // Data from 1 January to 24 April: April is partial even though it is not unusually low.
+    const text = buildInsight(monthly([500, 560, 580, 700]), "tr", { from: "2026-01-01 00:00", to: "2026-04-24 00:00" })
+    expect(text).toContain("Ocak 2026 → Mart 2026")
+    expect(text).toContain("(+%16)")
+    expect(text).toContain("Nisan 2026 henüz tamamlanmamış (son gün: 24 Nis 2026), karşılaştırmaya alınmadı.")
+  })
+
+  it("compares first and last month when both are complete", () => {
+    const text = buildInsight(monthly([500, 560, 580, 700]), "tr", { from: "2026-01-01 00:00", to: "2026-04-30 00:00" })
+    expect(text).toContain("Ocak 2026 → Nisan 2026")
+    expect(text).not.toContain("tamamlanmamış")
+  })
+})

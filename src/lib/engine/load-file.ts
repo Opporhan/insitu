@@ -3,6 +3,7 @@ import { ResultRow, type Column, type ColumnType } from "@/lib/schema"
 import { buildCleanTableSql, decideColumn, profileColumns, type CleanKind } from "./clean"
 import { profileTable, type ColumnSummary } from "./column-profile"
 import { computeOverview, type Overview } from "./overview"
+import type { Coverage } from "@/lib/insight"
 import { freshDb } from "./duckdb"
 import { normalizeSql } from "./normalize"
 import type { PrepareRequest, PrepareResponse, PreparedTable } from "./prepare"
@@ -25,6 +26,8 @@ export type Dataset = {
   profile: ColumnSummary[]
   /** First-look findings and warnings, computed locally before any question. */
   overview: Overview
+  /** First and last day of the file's only date column (null with none or several). */
+  coverage: Coverage | null
 }
 
 export type LoadResult = { kind: "sheets"; sheets: SheetInfo[] } | { kind: "dataset"; dataset: Dataset }
@@ -65,6 +68,14 @@ function prepareInWorker(file: File, sheet: string | undefined, onProgress: (p: 
     }
     worker.postMessage((sheet === undefined ? { file } : { file, sheet }) satisfies PrepareRequest)
   })
+}
+
+/** With exactly one date column, its range tells which months the data covers completely. */
+function coverageOf(profile: readonly ColumnSummary[]): Coverage | null {
+  const dates = profile.filter((c) => c.type === "date")
+  const [only] = dates
+  if (dates.length !== 1 || !only || typeof only.min !== "string" || typeof only.max !== "string") return null
+  return { from: only.min, to: only.max }
 }
 
 function toColumnType(duckType: string): ColumnType {
@@ -144,6 +155,7 @@ export async function loadFile(file: File, sheet?: string, onProgress: (p: PdfPr
         preview,
         profile,
         overview,
+        coverage: coverageOf(profile),
       },
     }
   } finally {

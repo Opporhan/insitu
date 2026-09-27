@@ -116,12 +116,14 @@ type Props = {
   onReady?: () => void
   /** A bar or slice was chosen: its label (as shown) drives a "only for X" follow-up. */
   onSelect?: (label: string) => void
+  /** No animation (off-screen captures for the PDF report). */
+  still?: boolean
 }
 
-export function ChartView({ view, onReady, onSelect }: Props) {
+export function ChartView({ view, onReady, onSelect, still = false }: Props) {
   const { t, locale } = useI18n()
   const narrow = useNarrow()
-  const animate = !prefersReducedMotion()
+  const animate = !still && !prefersReducedMotion()
   const seriesCount = view.kind === "pie" ? 1 : view.series.length
   const finished = useRef(0)
   const readyRef = useRef(onReady)

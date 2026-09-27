@@ -51,7 +51,9 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root {
+/* .theme-light: a light subtree inside the dark page (the PDF report is always light). */
+:root,
+.theme-light {
   /* Insitu light — same system as dark: calm neutrals, emerald + night blue.
      Emerald/blue are one step darker than in dark mode to keep text contrast ≥ 4.5:1. */
   --radius: 0.625rem;

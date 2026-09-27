@@ -10,7 +10,9 @@ import {
   ChevronDown,
   ClipboardCopy,
   Code2,
+  FileCheck,
   FileImage,
+  FilePlus,
   FileSpreadsheet,
   FileText,
   Hash,
@@ -21,6 +23,7 @@ import {
   Table2,
 } from "lucide-react"
 import { ChartView } from "@/components/chart-view"
+import type { ReportItem } from "@/components/report"
 import { useI18n } from "@/components/i18n-provider"
 import { MetricView } from "@/components/metric-view"
 import { TableView } from "@/components/table-view"
@@ -30,7 +33,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { runQuery, MAX_EXPORT_ROWS } from "@/lib/engine/run-query"
 import { copyTable, downloadCsv, downloadPng, downloadXlsx } from "@/lib/export"
 import { formatCount } from "@/lib/format"
-import { buildInsight } from "@/lib/insight"
+import { buildInsight, type Coverage } from "@/lib/insight"
 import { pngPages, viewOptions, type ResultView } from "@/lib/result-view"
 import { readableLabel } from "@/lib/suggestions"
 import type { ChartType, Column, OutputColumn, QueryPlan, ResultRow } from "@/lib/schema"
@@ -91,20 +94,25 @@ type Props = {
   /** Asks the follow-up "only for <label>". */
   onDrill: (label: string) => void
   busy: boolean
+  inReport: boolean
+  /** The file's date range, so a partial first/last month is never compared. */
+  coverage: Coverage | null
+  /** Adds (a snapshot of the view shown) to the report, or removes it. */
+  onToggleReport: (item: ReportItem) => void
 }
 
 function slug(s: string, locale: string): string {
   return s.toLocaleLowerCase(locale).replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 48) || "insitu"
 }
 
-export function ResultBento({ answer, columns, rowCount, onRunSql, onDrill, busy }: Props) {
+export function ResultBento({ answer, columns, rowCount, onRunSql, onDrill, busy, inReport, onToggleReport, coverage }: Props) {
   const [draft, setDraft] = useState<string | null>(null)
   const chartRef = useRef<HTMLDivElement>(null)
   const { t, locale } = useI18n()
   const { question, plan, rows, complete, resultColumns, view: plannedView } = answer
   // Always from the planned view (a table view would only say "8 rows found"); computed per
   // render so switching the language updates it immediately.
-  const insight = buildInsight(plannedView, locale)
+  const insight = buildInsight(plannedView, locale, coverage)
 
   // Only the views that are correct for this data (see viewOptions) are offered.
   const options = useMemo(
@@ -295,6 +303,25 @@ export function ResultBento({ answer, columns, rowCount, onRunSql, onDrill, busy
               }
             >
               <FileSpreadsheet aria-hidden /> Excel (.xlsx)
+            </Button>
+            <Button
+              variant={inReport ? "secondary" : "outline"}
+              className="col-span-2 h-11"
+              aria-pressed={inReport}
+              title={t.report.addHint}
+              disabled={view.kind === "empty"}
+              onClick={() => {
+                if (view.kind === "empty") return
+                const notes = [
+                  plannedView.kind === "table" && !plannedView.partial && plan.chartType !== "table" ? t.result.tableFallback : null,
+                  plan.note ? `${t.result.note}: ${plan.note}` : null,
+                  answer.edited ? t.result.editedMark : null,
+                ].filter((n): n is string => n !== null)
+                onToggleReport({ id: answer.id, title: plan.title, question, insight, notes, view })
+              }}
+            >
+              {inReport ? <FileCheck aria-hidden /> : <FilePlus aria-hidden />}
+              {inReport ? t.report.added : t.report.add}
             </Button>
             <Button
               variant="outline"

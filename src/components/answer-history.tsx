@@ -3,14 +3,14 @@
 import { ChartColumn, ChartLine, ChartPie, ChevronRight, Hash, History, Table2 } from "lucide-react"
 import { useI18n } from "@/components/i18n-provider"
 import type { Answer } from "@/components/result-bento"
-import { buildInsight } from "@/lib/insight"
+import { buildInsight, type Coverage } from "@/lib/insight"
 
 const ICONS = { metric: Hash, bar: ChartColumn, line: ChartLine, pie: ChartPie, table: Table2, empty: Table2 } as const
 
-type Props = { answers: readonly Answer[]; onSelect: (id: number) => void }
+type Props = { answers: readonly Answer[]; coverage: Coverage | null; onSelect: (id: number) => void }
 
 /** Earlier answers of this session, newest first; one click brings an answer back in full. */
-export function AnswerHistory({ answers, onSelect }: Props) {
+export function AnswerHistory({ answers, coverage, onSelect }: Props) {
   const { t, locale } = useI18n()
   if (answers.length === 0) return null
   return (
@@ -37,7 +37,7 @@ export function AnswerHistory({ answers, onSelect }: Props) {
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="truncate text-sm font-medium">{a.plan.title}</span>
                   <span className="truncate text-xs text-muted-foreground">{a.question}</span>
-                  <span className="line-clamp-2 text-xs text-muted-foreground/80">{buildInsight(a.view, locale)}</span>
+                  <span className="line-clamp-2 text-xs text-muted-foreground/80">{buildInsight(a.view, locale, coverage)}</span>
                 </span>
                 <ChevronRight className="mt-2 size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-hover:translate-x-0.5" aria-hidden />
               </button>

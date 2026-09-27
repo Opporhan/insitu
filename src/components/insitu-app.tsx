@@ -6,6 +6,7 @@ import { AnswerHistory } from "@/components/answer-history"
 import { AskBar } from "@/components/ask-bar"
 import { DataPrepPanel } from "@/components/data-prep-panel"
 import { OverviewPanel } from "@/components/overview-panel"
+import { ReportBar, type ReportItem } from "@/components/report"
 import { Dropzone } from "@/components/dropzone"
 import { useI18n } from "@/components/i18n-provider"
 import { ResultBento, type Answer } from "@/components/result-bento"
@@ -67,6 +68,8 @@ export function InsituApp() {
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [prepOpen, setPrepOpen] = useState(true)
   const [overviewOpen, setOverviewOpen] = useState(true)
+  // Analyses collected for the PDF report (snapshots, so they survive the 20-answer history cap).
+  const [report, setReport] = useState<ReportItem[]>([])
   // Questions saved for this file in an earlier visit, offered for restoring (never auto-run).
   const [saved, setSaved] = useState<SavedQuestion[]>([])
   const [restoring, setRestoring] = useState(false)
@@ -113,6 +116,7 @@ export function InsituApp() {
       const d2 = loaded.dataset
       const hasOverview = d2.overview.findings.length + d2.overview.warnings.length > 0
       setOverviewOpen(true)
+      setReport([])
       setPrepOpen(!hasOverview || d2.unreadable.length > 0 || d2.ambiguous.length > 0)
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e)
@@ -416,6 +420,7 @@ export function InsituApp() {
           onClick={() => {
             pending.current?.abort()
             session.current++
+            setReport([])
             setDataset(null)
             setState({ kind: "idle" })
             setHistory([])
@@ -431,7 +436,7 @@ export function InsituApp() {
 
       {/* Announces each new answer to screen readers (the region exists before its text changes). */}
       <p className="sr-only" aria-live="polite">
-        {!busy && active ? `${active.plan.title}. ${buildInsight(active.view, locale)}` : ""}
+        {!busy && active ? `${active.plan.title}. ${buildInsight(active.view, locale, dataset.coverage)}` : ""}
       </p>
 
       {history.length > 0 && (
@@ -443,6 +448,13 @@ export function InsituApp() {
           </Button>
         </div>
       )}
+
+      <ReportBar
+        items={report}
+        fileName={dataset.fileName}
+        onRemove={(id) => setReport((prev) => prev.filter((r) => r.id !== id))}
+        onClear={() => setReport([])}
+      />
 
       {state.kind === "error" && (
         <div role="alert" className="flex flex-col gap-2 text-sm">
@@ -496,6 +508,11 @@ export function InsituApp() {
             columns={dataset.columns}
             rowCount={dataset.rowCount}
             busy={busy}
+            inReport={report.some((r) => r.id === active.id)}
+            coverage={dataset.coverage}
+            onToggleReport={(item) =>
+              setReport((prev) => (prev.some((r) => r.id === item.id) ? prev.filter((r) => r.id !== item.id) : [...prev, item]))
+            }
             onRunSql={(sql) => void runEditedSql(active, sql)}
             onDrill={(label) => {
               // The drill-down is a follow-up on the answer on screen.
@@ -505,7 +522,7 @@ export function InsituApp() {
         )}
       </div>
 
-      <AnswerHistory answers={answers.filter((a) => a.id !== activeId)} onSelect={showAnswer} />
+      <AnswerHistory answers={answers.filter((a) => a.id !== activeId)} coverage={dataset.coverage} onSelect={showAnswer} />
     </div>
   )
 }

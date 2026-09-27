@@ -28,9 +28,10 @@ function isSafari(): boolean {
 const MAX_CANVAS_PIXELS = 16_000_000
 const PNG_PIXEL_RATIO = 3
 
-export async function downloadPng(node: HTMLElement, fileName: string): Promise<void> {
+/** A sharp PNG of an element (UI controls marked data-export-ignore are left out). */
+export async function renderPng(node: HTMLElement, maxPixelRatio = PNG_PIXEL_RATIO): Promise<Blob> {
   const { width, height } = node.getBoundingClientRect()
-  const pixelRatio = Math.min(PNG_PIXEL_RATIO, Math.sqrt(MAX_CANVAS_PIXELS / Math.max(1, width * height)))
+  const pixelRatio = Math.min(maxPixelRatio, Math.sqrt(MAX_CANVAS_PIXELS / Math.max(1, width * height)))
   const options = {
     pixelRatio,
     backgroundColor: getComputedStyle(node).backgroundColor,
@@ -41,7 +42,16 @@ export async function downloadPng(node: HTMLElement, fileName: string): Promise<
   if (isSafari()) await toBlob(node, options)
   const blob = await toBlob(node, options)
   if (!blob) throw new Error("PNG could not be created")
-  saveBlob(blob, `${fileName}.png`)
+  return blob
+}
+
+export async function downloadPng(node: HTMLElement, fileName: string): Promise<void> {
+  saveBlob(await renderPng(node), `${fileName}.png`)
+}
+
+/** Saves a finished file (e.g. the PDF report). */
+export function downloadBytes(bytes: Uint8Array, fileName: string, type: string): void {
+  saveBlob(new Blob([bytes as BlobPart], { type }), fileName)
 }
 
 // Spreadsheet conventions per UI language, no thousands grouping.
