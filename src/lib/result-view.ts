@@ -43,17 +43,76 @@ export type ResultView =
       totals: Record<string, number>
     }
 
+/** "Toplam_Satış", "toplam satis" and "toplamsatis" are the same column name. */
+const keyForm = (s: string) =>
+  s
+    .toLocaleLowerCase("tr")
+    .replace(/ı/g, "i")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "")
+
+/**
+ * Declared column key → the result column it describes. Exact names first, then names that
+ * differ only in case/accents/underscores; columns still unmatched are paired in SELECT order
+ * when the counts agree (the plan lists its columns in SELECT order), so a model that named an
+ * alias slightly differently still gets its label, format and axes.
+ */
+export function matchColumns(declared: readonly OutputColumn[], resultKeys: readonly string[]): Map<string, string> {
+  const map = new Map<string, string>()
+  const free = new Set(resultKeys)
+  for (const c of declared) {
+    if (free.has(c.key) && !map.has(c.key)) {
+      map.set(c.key, c.key)
+      free.delete(c.key)
+    }
+  }
+  for (const c of declared) {
+    if (map.has(c.key)) continue
+    const k = [...free].find((r) => keyForm(r) === keyForm(c.key))
+    if (k !== undefined) {
+      map.set(c.key, k)
+      free.delete(k)
+    }
+  }
+  const leftDeclared = declared.filter((c) => !map.has(c.key))
+  const leftResult = resultKeys.filter((k) => free.has(k))
+  if (leftDeclared.length === leftResult.length) leftDeclared.forEach((c, i) => map.set(c.key, leftResult[i] ?? c.key))
+  return map
+}
+
+/** The plan with its column keys and axis keys pointing at the columns the query really returned. */
+export function alignPlan(plan: QueryPlan, resultKeys: readonly string[]): QueryPlan {
+  const map = matchColumns(plan.columns, resultKeys)
+  const re = (k: string) => (k ? (map.get(k) ?? k) : k)
+  return {
+    ...plan,
+    xAxisKey: re(plan.xAxisKey),
+    yAxisKey: re(plan.yAxisKey),
+    seriesKey: re(plan.seriesKey),
+    columns: plan.columns.flatMap((c) => {
+      const key = map.get(c.key)
+      return key === undefined ? [] : [{ ...c, key }]
+    }),
+  }
+}
+
 /**
  * Reconciles the declared output columns with what the query actually returned.
- * Undeclared columns get a neutral label; a declared format that contradicts the
- * values (e.g. "currency" on text) is corrected instead of trusted.
+ * Undeclared columns get a readable label (`labelFor`); a declared format that contradicts
+ * the values (e.g. "currency" on text) is corrected instead of trusted.
  */
-export function resolveColumns(declared: readonly OutputColumn[], resultKeys: readonly string[], rows: readonly ResultRow[]): OutputColumn[] {
+export function resolveColumns(
+  declared: readonly OutputColumn[],
+  resultKeys: readonly string[],
+  rows: readonly ResultRow[],
+  labelFor: (key: string) => string = (key) => key,
+): OutputColumn[] {
   const byKey = new Map(declared.map((c) => [c.key, c]))
   return resultKeys.map((key) => {
     const values = rows.map((r) => r[key]).filter((v) => v !== null && v !== undefined)
     const allNumbers = values.length > 0 && values.every((v) => typeof v === "number")
-    const col: OutputColumn = byKey.get(key) ?? { key, label: key, format: allNumbers ? "number" : "text", total: false }
+    const col: OutputColumn = byKey.get(key) ?? { key, label: labelFor(key), format: allNumbers ? "number" : "text", total: false }
     if (isNumericFormat(col.format) && !allNumbers && values.length > 0) return { ...col, format: "text", total: false }
     if (!isNumericFormat(col.format) && allNumbers) return { ...col, format: "number", total: false }
     return col
@@ -176,9 +235,11 @@ export function resolveView(
   resultKeys: readonly string[],
   complete = true,
   otherLabel = OTHER_LABEL,
+  labelFor: (key: string) => string = (key) => key,
 ): ResultView {
   if (rows.length === 0) return { kind: "empty" }
-  const columns = resolveColumns(plan.columns, resultKeys, rows)
+  plan = alignPlan(plan, resultKeys)
+  const columns = resolveColumns(plan.columns, resultKeys, rows, labelFor)
   // Charts, metrics and totals from a cut-off result would be wrong; list what we have.
   if (!complete) return table(columns, rows, true)
   const col = (key: string) => (key ? columns.find((c) => c.key === key) : undefined)

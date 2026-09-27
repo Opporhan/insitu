@@ -15,9 +15,10 @@ import { prewarmDb } from "@/lib/engine/duckdb"
 import { runQuery } from "@/lib/engine/run-query"
 import { formatCount } from "@/lib/format"
 import type { PdfProgress, SheetInfo } from "@/lib/ingest"
-import { resolveColumns, resolveView } from "@/lib/result-view"
+import { alignPlan, resolveColumns, resolveView } from "@/lib/result-view"
 import { MAX_HISTORY, TranslateResponse, type HistoryTurn, type RepairContext, type TranslateRequest } from "@/lib/schema"
-import { suggestQuestions } from "@/lib/suggestions"
+import { humanize, suggestQuestions } from "@/lib/suggestions"
+import { capitalize } from "@/lib/text"
 
 type AnswerState = { kind: "idle" } | { kind: "asking" } | { kind: "error"; message: string; suggestions: string[] }
 
@@ -137,8 +138,10 @@ export function InsituApp() {
         return
       }
 
-      const view = resolveView(plan, result.rows, result.columns, result.complete, t.insight.other)
-      const resultColumns = resolveColumns(plan.columns, result.columns, result.rows)
+      // A result column the plan did not describe still gets a readable name ("toplam_satis" → "Toplam satış").
+      const labelFor = (key: string) => capitalize(humanize(key, undefined, locale), locale)
+      const view = resolveView(plan, result.rows, result.columns, result.complete, t.insight.other, labelFor)
+      const resultColumns = resolveColumns(alignPlan(plan, result.columns).columns, result.columns, result.rows, labelFor)
       const answer: Answer = {
         id: ++answerCount.current,
         question,

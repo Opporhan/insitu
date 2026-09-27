@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { MAX_PIE_SLICES, resolveView } from "@/lib/result-view"
+import { MAX_PIE_SLICES, resolveColumns, resolveView } from "@/lib/result-view"
 import type { QueryPlan, ResultRow } from "@/lib/schema"
 
 function plan(p: Partial<QueryPlan>): QueryPlan {
@@ -226,5 +226,24 @@ describe("viewOptions", () => {
     })
     const rows = [{ m: "2026-01", c: "A", v: 1 }, { m: "2026-01", c: "B", v: 2 }, { m: "2026-02", c: "A", v: 3 }]
     expect(await types(p, rows)).toEqual(["bar", "line", "table"])
+  })
+})
+
+describe("declared columns vs. returned columns", () => {
+  it("keeps label, currency format and axes when the alias differs only in spelling", () => {
+    const view = resolveView(plan({ chartType: "metric", columns: [{ key: "Toplam_Satış", label: "Toplam Satış", format: "currency", total: false }] }), [{ toplam_satis: 56700.75 }], ["toplam_satis"])
+    expect(view).toEqual({ kind: "metric", items: [{ column: { key: "toplam_satis", label: "Toplam Satış", format: "currency", total: false }, value: 56700.75 }] })
+  })
+
+  it("pairs renamed aliases in SELECT order and remaps the chart axes", () => {
+    const rows = [{ sehir: "İzmir", ciro: 10 }, { sehir: "Ankara", ciro: 5 }]
+    const view = resolveView(plan({ xAxisKey: "il", yAxisKey: "toplam", columns: [{ key: "il", label: "Şehir", format: "text", total: false }, { key: "toplam", label: "Ciro", format: "currency", total: true }] }), rows, ["sehir", "ciro"])
+    expect(view.kind).toBe("bar")
+    if (view.kind === "bar") expect([view.x.label, view.y.label, view.y.format]).toEqual(["Şehir", "Ciro", "currency"])
+  })
+
+  it("gives an undeclared column a readable name instead of the raw alias", () => {
+    const cols = resolveColumns([], ["toplam_satis"], [{ toplam_satis: 1 }], (k) => (k === "toplam_satis" ? "Toplam satış" : k))
+    expect(cols[0]?.label).toBe("Toplam satış")
   })
 })
