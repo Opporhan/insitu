@@ -83,6 +83,39 @@ export function matchColumns(declared: readonly OutputColumn[], resultKeys: read
   return map
 }
 
+const ISO_LIKE = /^\d{4}-\d{2}(-\d{2})?/
+
+/**
+ * A plan for SQL the user wrote by hand: the chart follows the result's shape (one row →
+ * metric; a date and numbers → line; one category and numbers → bar; otherwise table), and a
+ * column keeps its label/format from the earlier plan when it has the same name.
+ */
+export function planForResult(base: QueryPlan, sql: string, resultKeys: readonly string[], rows: readonly ResultRow[], labelFor: (key: string) => string): QueryPlan {
+  const numeric = resultKeys.filter((k) => rows.some((r) => typeof r[k] === "number") && rows.every((r) => r[k] === null || typeof r[k] === "number"))
+  const dims = resultKeys.filter((k) => !numeric.includes(k))
+  const dateDim = dims.length === 1 && rows.every((r) => r[dims[0] ?? ""] === null || ISO_LIKE.test(String(r[dims[0] ?? ""])))
+  const chartType: QueryPlan["chartType"] =
+    rows.length === 1 ? "metric" : dims.length === 1 && numeric.length >= 1 ? (dateDim ? "line" : "bar") : "table"
+  return {
+    ...base,
+    sql,
+    chartType,
+    xAxisKey: chartType === "bar" || chartType === "line" ? (dims[0] ?? "") : "",
+    yAxisKey: chartType === "bar" || chartType === "line" ? (numeric[0] ?? "") : "",
+    seriesKey: "",
+    note: "",
+    columns: resultKeys.map(
+      (k) =>
+        base.columns.find((c) => c.key === k) ?? {
+          key: k,
+          label: labelFor(k),
+          format: numeric.includes(k) ? "number" : dateDim && k === dims[0] ? "date" : "text",
+          total: false,
+        },
+    ),
+  }
+}
+
 /** The plan with its column keys and axis keys pointing at the columns the query really returned. */
 export function alignPlan(plan: QueryPlan, resultKeys: readonly string[]): QueryPlan {
   const map = matchColumns(plan.columns, resultKeys)

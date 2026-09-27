@@ -15,7 +15,7 @@ import { prewarmDb } from "@/lib/engine/duckdb"
 import { runQuery } from "@/lib/engine/run-query"
 import { formatCount } from "@/lib/format"
 import type { PdfProgress, SheetInfo } from "@/lib/ingest"
-import { alignPlan, resolveColumns, resolveView } from "@/lib/result-view"
+import { alignPlan, planForResult, resolveColumns, resolveView } from "@/lib/result-view"
 import {
   MAX_HISTORY,
   MAX_SQL_CHARS,
@@ -163,7 +163,6 @@ export function InsituApp() {
     if (!dataset) return
     const mine = session.current
     setState({ kind: "asking" })
-    const plan: QueryPlan = { ...base.plan, sql }
     const result = await runQuery(sql, undefined, [t.result.yes, t.result.no])
     if (mine !== session.current) return
     if (!result.ok) {
@@ -176,6 +175,7 @@ export function InsituApp() {
       })
       return
     }
+    const plan = planForResult(base.plan, sql, result.columns, result.rows, (k) => readableLabel(k, locale))
     const answer = { ...toAnswer(base.question, plan, result, 0), edited: true }
     setAnswers((prev) => [answer, ...prev].slice(0, MAX_ANSWERS))
     setActiveId(answer.id)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { MAX_PIE_SLICES, resolveColumns, resolveView } from "@/lib/result-view"
+import { MAX_PIE_SLICES, planForResult, resolveColumns, resolveView } from "@/lib/result-view"
 import type { QueryPlan, ResultRow } from "@/lib/schema"
 
 function plan(p: Partial<QueryPlan>): QueryPlan {
@@ -245,5 +245,25 @@ describe("declared columns vs. returned columns", () => {
   it("gives an undeclared column a readable name instead of the raw alias", () => {
     const cols = resolveColumns([], ["toplam_satis"], [{ toplam_satis: 1 }], (k) => (k === "toplam_satis" ? "Toplam satış" : k))
     expect(cols[0]?.label).toBe("Toplam satış")
+  })
+})
+
+describe("planForResult (hand-edited SQL)", () => {
+  const base = plan({ chartType: "table", columns: [{ key: "ciro", label: "Ciro", format: "currency", total: true }] })
+  const label = (k: string) => k.toUpperCase()
+  it("draws a category/number result as bars and keeps a known column's format", () => {
+    const rows = [{ kategori: "Giyim", ciro: 10 }, { kategori: "Kitap", ciro: 5 }]
+    const p = planForResult(base, "SELECT …", ["kategori", "ciro"], rows, label)
+    expect([p.chartType, p.xAxisKey, p.yAxisKey]).toEqual(["bar", "kategori", "ciro"])
+    expect(p.columns).toEqual([
+      { key: "kategori", label: "KATEGORI", format: "text", total: false },
+      { key: "ciro", label: "Ciro", format: "currency", total: true },
+    ])
+    expect(resolveView(p, rows, ["kategori", "ciro"]).kind).toBe("bar")
+  })
+  it("uses a line for dates, a metric for one row, and a table otherwise", () => {
+    expect(planForResult(base, "", ["ay", "n"], [{ ay: "2025-01", n: 1 }, { ay: "2025-02", n: 2 }], label).chartType).toBe("line")
+    expect(planForResult(base, "", ["n"], [{ n: 1 }], label).chartType).toBe("metric")
+    expect(planForResult(base, "", ["a", "b"], [{ a: "x", b: "y" }, { a: "z", b: "w" }], label).chartType).toBe("table")
   })
 })
