@@ -53,6 +53,7 @@ const tr = {
     readingPdf: (page: number, pages: number) => `PDF okunuyor: sayfa ${page}/${pages}`,
     ocr: (page: number, pages: number) =>
       `Taranmış sayfa metin tanımayla okunuyor: ${page}/${pages}${page === 1 ? " (ilk seferde tanıma modeli indirilir)" : ""}`,
+    verify: (page: number, pages: number) => `Taranmış sayılar ikinci kez kontrol ediliyor: sayfa ${page}/${pages}`,
     drop: "CSV, Excel veya PDF dosyanı buraya bırak",
     orClick: "ya da seçmek için tıkla",
     privacy: "Dosya hiçbir sunucuya yüklenmez",
@@ -103,6 +104,10 @@ const tr = {
         ? `Metin tanıma ${n} kelimeden emin olamadı; önizlemedeki değerleri orijinal PDF ile karşılaştır`
         : "Metin tanıma sonuçlarını önizlemede orijinal PDF ile karşılaştır",
     ocrSkipped: (n: number) => `${n} taranmış sayfa sınırı aştığı için okunmadı`,
+    ocrChecked: (checked: number, corrected: number) =>
+      `Taranmış ${checked} sayı/tarih iki farklı okumayla karşılaştırıldı${corrected > 0 ? `; ${corrected} tanesi, rakam modunda yapılan ek okumaların çoğunluğuyla düzeltildi` : ""}`,
+    ocrUncertain: (n: number) =>
+      `${n} değer okumalar uyuşmadığı için “(?)” ile işaretlendi; bu değerlerin sütunuyla hesap yapılmaz. Orijinal PDF'e bakıp düzeltilmiş bir kopya yükleyebilirsin.`,
     pageFurniture: (n: number) => `${n} sayfa üst/alt bilgisi satırı (sayfa numarası, rapor başlığı) atıldı`,
     repeatedHeaders: (n: number) => `Her sayfada tekrarlanan ${n} başlık satırı atıldı`,
     wrappedRows: (n: number) => `Alt satıra taşan ${n} hücre metni üstündeki satırla birleştirildi`,
@@ -237,6 +242,7 @@ const en: Messages = {
     loading: "Reading your table in the browser…",
     readingPdf: (page, pages) => `Reading PDF: page ${page}/${pages}`,
     ocr: (page, pages) => `Reading scanned page with text recognition: ${page}/${pages}${page === 1 ? " (the recognition model downloads the first time)" : ""}`,
+    verify: (page, pages) => `Double-checking scanned numbers: page ${page}/${pages}`,
     drop: "Drop your CSV, Excel or PDF file here",
     orClick: "or click to choose",
     privacy: "Your file is never uploaded to a server",
@@ -285,6 +291,10 @@ const en: Messages = {
         ? `Text recognition was unsure about ${n} word${n === 1 ? "" : "s"}; compare the preview with the original PDF`
         : "Compare the text recognition results in the preview with the original PDF",
     ocrSkipped: (n) => `${n} scanned page${n === 1 ? "" : "s"} over the limit ${n === 1 ? "was" : "were"} not read`,
+    ocrChecked: (checked, corrected) =>
+      `${checked} scanned numbers/dates cross-checked with two independent readings${corrected > 0 ? `; ${corrected} fixed by a majority of extra digits-only readings` : ""}`,
+    ocrUncertain: (n) =>
+      `${n} value${n === 1 ? "" : "s"} marked “(?)” because the readings disagreed; no calculation uses ${n === 1 ? "its" : "their"} column. Check the original PDF and upload a corrected copy.`,
     pageFurniture: (n) => `${n} page header/footer line${n === 1 ? "" : "s"} (page numbers, report titles) removed`,
     repeatedHeaders: (n) => `${n} header row${n === 1 ? "" : "s"} repeated on each page removed`,
     wrappedRows: (n) => `${n} cell${n === 1 ? "" : "s"} wrapped onto the next line joined with the row above`,

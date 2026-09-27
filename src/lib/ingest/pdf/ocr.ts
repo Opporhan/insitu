@@ -24,7 +24,19 @@ function limit<T>(promise: Promise<T>, ms: number): Promise<T> {
   })
 }
 
-export type OcrPage = { glyphs: Glyph[]; lowConfidenceWords: number; restoredLetters: number }
+export type OcrPage = {
+  glyphs: Glyph[]
+  /** The Turkish model's reading, used to cross-check numbers. */
+  alt: Glyph[]
+  /** Deskew angle applied; re-reading a cell must use the same one to hit the same pixels. */
+  angle: number
+  lowConfidenceWords: number
+  restoredLetters: number
+}
+
+/** A cell region in rendered-image pixels. */
+export type PixelRect = { left: number; top: number; width: number; height: number }
+export type Reading = { text: string; conf: number }
 
 type Word = { text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } }
 
@@ -84,6 +96,7 @@ function linesOf(data: { blocks: { paragraphs: { lines: Line[] }[] }[] | null })
  */
 export class PageReader {
   #workers: Promise<[OcrWorker, OcrWorker]> | null = null
+  #digits: Promise<OcrWorker[]> | null = null
 
   #start(): Promise<[OcrWorker, OcrWorker]> {
     this.#workers ??= limit(
@@ -111,6 +124,14 @@ export class PageReader {
       PAGE_TIMEOUT_MS,
     )
     const letterWords = linesOf(b?.data ?? { blocks: null }).flatMap((l) => l.words)
+    const toGlyph = (w: Word, h: number, y: number): Glyph => ({
+      text: w.text.trim(),
+      x0: w.bbox.x0 / scale,
+      x1: w.bbox.x1 / scale,
+      y: y / scale,
+      h: h / scale,
+      conf: w.confidence,
+    })
     const glyphs: Glyph[] = []
     let lowConfidenceWords = 0
     let restoredLetters = 0
@@ -126,16 +147,54 @@ export class PageReader {
         if (word.confidence < LOW_CONFIDENCE) lowConfidenceWords++
         const center = (word.bbox.x0 + word.bbox.x1) / 2
         const baseline = bx1 !== bx0 ? by0 + ((by1 - by0) * (center - bx0)) / (bx1 - bx0) : word.bbox.y1
-        glyphs.push({ text, x0: word.bbox.x0 / scale, x1: word.bbox.x1 / scale, y: baseline / scale, h: h / scale })
+        glyphs.push(toGlyph({ ...word, text }, h, baseline))
       }
     }
-    return { glyphs, lowConfidenceWords, restoredLetters }
+    const alt = letterWords.filter((w) => w.text.trim()).map((w) => toGlyph(w, w.bbox.y1 - w.bbox.y0, w.bbox.y1))
+    return { glyphs, alt, angle: a?.data.rotateRadians ?? 0, lowConfidenceWords, restoredLetters }
+  }
+
+  /**
+   * Re-reads cell regions of one page with an engine that only knows digits and number/date
+   * punctuation. Same image, same deskew angle, so the rectangles match the first reading.
+   */
+  async readDigits(image: Blob, angle: number, rects: readonly PixelRect[]): Promise<Reading[][]> {
+    // Two independent digits-only engines (different models), so no single reading decides.
+    this.#digits ??= limit(
+      (async () => {
+        const { createWorker, PSM } = await import("tesseract.js")
+        const workers = await Promise.all([createWorker("eng"), createWorker("tur")])
+        await Promise.all(
+          workers.map((w) => w.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_LINE, tessedit_char_whitelist: "0123456789.,:/-" })),
+        )
+        return workers
+      })(),
+      START_TIMEOUT_MS,
+    )
+    const workers = await this.#digits
+    const out: Reading[][] = []
+    for (const rectangle of rects) {
+      const results = await limit(
+        Promise.all(workers.map((w) => w.recognize(image, { rotateRadians: angle, rectangle }))),
+        PAGE_TIMEOUT_MS,
+      )
+      out.push(
+        results.flatMap(({ data }) => {
+          // Stray punctuation from the cell edge ("1," or ".7") is not part of the value.
+          const text = data.text.trim().replace(/^[.,:/]+|[.,:/-]+$/g, "")
+          return text ? [{ text, conf: data.confidence }] : []
+        }),
+      )
+    }
+    return out
   }
 
   async close(): Promise<void> {
     const workers = this.#workers
+    const digits = this.#digits
     this.#workers = null
-    const started = workers ? await workers.catch(() => null) : null
-    await Promise.all((started ?? []).map((w) => w.terminate()))
+    this.#digits = null
+    const started = [...((workers ? await workers.catch(() => null) : null) ?? []), ...((digits ? await digits.catch(() => null) : null) ?? [])]
+    await Promise.all(started.map((w) => w?.terminate()))
   }
 }

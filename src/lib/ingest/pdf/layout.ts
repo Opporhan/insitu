@@ -5,13 +5,26 @@ import type { Cell, Matrix } from "../sources"
  * OCR output, so both are described with page coordinates in points, y growing downwards.
  */
 
-/** A run of text at a position. `y` is the baseline, `h` the font size. */
-export type Glyph = { text: string; x0: number; x1: number; y: number; h: number }
+/** A run of text at a position. `y` is the baseline, `h` the font size, `conf` the OCR confidence (0–100). */
+export type Glyph = { text: string; x0: number; x1: number; y: number; h: number; conf?: number }
 /** A drawn line segment (table border). Rectangles are split into their four edges. */
 export type Rule = { x0: number; y0: number; x1: number; y1: number }
-export type PageData = { page: number; width: number; height: number; glyphs: Glyph[]; rules: Rule[]; ocr: boolean }
+export type PageData = {
+  page: number
+  width: number
+  height: number
+  glyphs: Glyph[]
+  rules: Rule[]
+  ocr: boolean
+  /** OCR only: the second (Turkish model) reading of the page, and the deskew angle used. */
+  alt?: Glyph[]
+  angle?: number
+}
 
-export type PdfTable = { matrix: Matrix; pages: [number, number]; ocr: boolean }
+/** Where a cell's text sits on its page (points), and the lowest OCR confidence of its words. */
+export type CellBox = { page: number; x0: number; x1: number; y0: number; y1: number; conf: number }
+/** `boxes` has the same shape as `matrix` (null for empty cells). */
+export type PdfTable = { matrix: Matrix; boxes: (CellBox | null)[][]; pages: [number, number]; ocr: boolean }
 export type LayoutStats = { droppedPageFurniture: number; mergedWrappedRows: number }
 
 /** Text pieces of one visual line that sit closer than this (× font size) are one cell. */
@@ -21,7 +34,7 @@ const MIN_COLUMN_GAP = 2.5
 /** Share of the page at the top and bottom where page headers/footers live. */
 const FURNITURE_ZONE = 0.12
 
-type Segment = { text: string; x0: number; x1: number }
+type Segment = { text: string; x0: number; x1: number; conf: number }
 type Line = { page: number; y: number; h: number; segments: Segment[]; x0: number; x1: number }
 type Region = { lines: Line[]; rules: Rule[]; ocr: boolean }
 
@@ -75,7 +88,8 @@ export function buildLines(page: PageData): Line[] {
         const glue = g.x0 - prev.x1 > 0.1 * h ? " " : ""
         prev.text = `${prev.text}${glue}${g.text}`
         prev.x1 = Math.max(prev.x1, g.x1)
-      } else segments.push({ text: g.text, x0: g.x0, x1: g.x1 })
+        prev.conf = Math.min(prev.conf, g.conf ?? 100)
+      } else segments.push({ text: g.text, x0: g.x0, x1: g.x1, conf: g.conf ?? 100 })
     }
     return {
       page: page.page,
@@ -266,17 +280,34 @@ function isContinuation(row: readonly Cell[], prev: readonly Cell[] | undefined,
   return filled.every(([, i]) => prev[i] !== null && prev[i] !== undefined && !isValue(prev[i] ?? ""))
 }
 
-function regionToMatrix(r: Region): { matrix: Matrix; merged: number } {
+function extend(box: CellBox | null, add: CellBox | null): CellBox | null {
+  if (!box || !add || box.page !== add.page) return box ?? add
+  return {
+    page: box.page,
+    x0: Math.min(box.x0, add.x0),
+    x1: Math.max(box.x1, add.x1),
+    y0: Math.min(box.y0, add.y0),
+    y1: Math.max(box.y1, add.y1),
+    conf: Math.min(box.conf, add.conf),
+  }
+}
+
+type Row = { cells: Cell[]; boxes: (CellBox | null)[]; line: Line }
+
+function regionToMatrix(r: Region): { matrix: Matrix; boxes: (CellBox | null)[][]; merged: number } {
   const ruled = ruledBoundaries(r)
   const bounds = ruled.length > 0 ? ruled : whitespaceBoundaries(r)
   const columns = bounds.length + 1
-  const rows: { cells: Cell[]; line: Line }[] = r.lines.map((line) => {
+  const rows: Row[] = r.lines.map((line) => {
     const cells: Cell[] = new Array<Cell>(columns).fill(null)
+    const boxes: (CellBox | null)[] = new Array<CellBox | null>(columns).fill(null)
     for (const s of line.segments) {
       const c = columnOf(bounds, s)
       cells[c] = cells[c] === null ? s.text : `${cells[c]} ${s.text}`
+      const box = { page: line.page, x0: s.x0, x1: s.x1, y0: line.y - line.h, y1: line.y + 0.3 * line.h, conf: s.conf }
+      boxes[c] = extend(boxes[c] ?? null, box)
     }
-    return { cells, line }
+    return { cells, boxes, line }
   })
 
   const gaps = rows.slice(1).flatMap((row, i) => {
@@ -284,18 +315,19 @@ function regionToMatrix(r: Region): { matrix: Matrix; merged: number } {
     return prev && prev.line.page === row.line.page ? [row.line.y - prev.line.y] : []
   })
   const pitch = median(gaps) || 12
-  const out: { cells: Cell[]; line: Line }[] = []
+  const out: Row[] = []
   let merged = 0
   for (const row of rows) {
     const prev = out[out.length - 1]
     const gap = prev && prev.line.page === row.line.page ? row.line.y - prev.line.y : Infinity
     if (prev && isContinuation(row.cells, prev.cells, gap, pitch)) {
       prev.cells = prev.cells.map((c, i) => (row.cells[i] ? `${c} ${row.cells[i]}` : c))
+      prev.boxes = prev.boxes.map((b, i) => extend(b, row.boxes[i] ?? null))
       prev.line = row.line
       merged++
-    } else out.push({ cells: [...row.cells], line: row.line })
+    } else out.push({ cells: [...row.cells], boxes: [...row.boxes], line: row.line })
   }
-  return { matrix: out.map((row) => row.cells), merged }
+  return { matrix: out.map((row) => row.cells), boxes: out.map((row) => row.boxes), merged }
 }
 
 /** Pages with positioned text → tables, in reading order. */
@@ -305,10 +337,10 @@ export function extractTables(pages: readonly PageData[]): { tables: PdfTable[];
   const regions = linkAcrossPages(sorted.map((p, i) => pageRegions(p, lines[i] ?? [])))
   let mergedWrappedRows = 0
   const tables = regions.map((r) => {
-    const { matrix, merged } = regionToMatrix(r)
+    const { matrix, boxes, merged } = regionToMatrix(r)
     mergedWrappedRows += merged
     const pageNumbers = r.lines.map((l) => l.page)
-    return { matrix, pages: [Math.min(...pageNumbers), Math.max(...pageNumbers)] as [number, number], ocr: r.ocr }
+    return { matrix, boxes, pages: [Math.min(...pageNumbers), Math.max(...pageNumbers)] as [number, number], ocr: r.ocr }
   })
   return { tables, stats: { droppedPageFurniture: dropped, mergedWrappedRows } }
 }

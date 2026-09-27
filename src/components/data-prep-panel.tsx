@@ -31,6 +31,7 @@ export function DataPrepPanel({ dataset, open, onOpenChange }: Props) {
   )
   if (pdf && pdf.ocrPages > 0) lines.push(p.ocrPages(pdf.ocrPages))
   if (pdf && pdf.skippedOcrPages > 0) lines.push(p.ocrSkipped(pdf.skippedOcrPages))
+  if (pdf && pdf.checkedCells > 0) lines.push(p.ocrChecked(pdf.checkedCells, pdf.correctedCells))
   if (pdf && pdf.droppedPageFurniture > 0) lines.push(p.pageFurniture(pdf.droppedPageFurniture))
   lines.push(r.headerRow > 0 ? p.header(r.headerRow) : p.noHeader)
   if (r.droppedRepeatedHeaders > 0) lines.push(p.repeatedHeaders(r.droppedRepeatedHeaders))
@@ -88,6 +89,12 @@ export function DataPrepPanel({ dataset, open, onOpenChange }: Props) {
                   {p.unreadable(u.column, u.count)}
                 </li>
               ))}
+              {pdf && pdf.uncertainCells > 0 && (
+                <li className="inline-flex items-start gap-1.5 text-foreground marker:text-transparent">
+                  <TriangleAlert className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+                  {p.ocrUncertain(pdf.uncertainCells)}
+                </li>
+              )}
               {pdf && pdf.ocrPages > 0 && (
                 <li className="inline-flex items-start gap-1.5 text-foreground marker:text-transparent">
                   <TriangleAlert className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />

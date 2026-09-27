@@ -63,6 +63,8 @@ export function Dropzone({ loading, progress, error, onFile, onSample }: Props) 
               ? t.dropzone.drop
               : progress?.step === "ocr"
                 ? t.dropzone.ocr(progress.page, progress.pages)
+                : progress?.step === "verify"
+                  ? t.dropzone.verify(progress.page, progress.pages)
                 : progress
                   ? t.dropzone.readingPdf(progress.page, progress.pages)
                   : t.dropzone.loading}

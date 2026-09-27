@@ -24,6 +24,9 @@ export type PdfReport = {
   lowConfidenceWords: number
   droppedPageFurniture: number
   mergedWrappedRows: number
+  checkedCells: number
+  correctedCells: number
+  uncertainCells: number
 }
 
 export type IngestReport = TidyReport & {
@@ -122,6 +125,9 @@ async function ingestPdf(data: ArrayBuffer, sheet: string | undefined, onProgres
           lowConfidenceWords: pdf.lowConfidenceWords,
           droppedPageFurniture: pdf.droppedPageFurniture,
           mergedWrappedRows: pdf.mergedWrappedRows,
+          checkedCells: pdf.checkedCells,
+          correctedCells: pdf.correctedCells,
+          uncertainCells: pdf.uncertainCells,
         },
       },
     }

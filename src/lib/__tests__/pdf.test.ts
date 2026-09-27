@@ -6,7 +6,8 @@ import { PDFDocument, StandardFonts } from "pdf-lib"
 import { beforeAll, describe, expect, it } from "vitest"
 import { buildCleanTableSql, decideColumn, profileColumns } from "@/lib/engine/clean"
 import { ingest, type IngestReport } from "@/lib/ingest"
-import { extractTables, type Glyph, type PageData } from "@/lib/ingest/pdf/layout"
+import { extractTables, type CellBox, type Glyph, type PageData, type PdfTable } from "@/lib/ingest/pdf/layout"
+import { verifyOcrTable } from "@/lib/ingest/pdf/verify"
 import { drawTable, newDoc, text, trMoney, type TableSpec } from "./pdf-fixtures"
 
 let conn: DuckDBConnection
@@ -237,4 +238,91 @@ describe("PDF table layout", () => {
       ["Ankara", "3", "99,90"],
     ])
   })
+})
+
+describe("scanned number cross-check", () => {
+  // Row r, column c occupies x 100c…100c+60, y 20r…20r+12 on page 1.
+  const box = (r: number, c: number): CellBox => ({ page: 1, x0: 100 * c, x1: 100 * c + 60, y0: 20 * r, y1: 20 * r + 12, conf: 90 })
+  const glyph = (text: string, r: number, c: number): Glyph => ({ text, x0: 100 * c + 5, x1: 100 * c + 50, y: 20 * r + 11, h: 10 })
+  const table = (matrix: (string | null)[][]): PdfTable => ({
+    matrix,
+    boxes: matrix.map((row, r) => row.map((v, c) => (v === null ? null : box(r, c)))),
+    pages: [1, 1],
+    ocr: true,
+  })
+
+  it("accepts agreeing readings, fixes by majority, and marks disagreement instead of guessing", async () => {
+    const first = table([
+      ["Ürün", "Adet", "Tutar"],
+      ["Çay", "2", "241,00"],
+      ["Kahve", "ak", "52,10"],
+      ["Süt", "3", "52,10"],
+      ["Bal", "4", "99,90"],
+    ])
+    const second = [
+      glyph("2", 1, 1), glyph("241,00", 1, 2),
+      glyph("1", 2, 1), glyph("52,70", 2, 2),
+      glyph("3", 3, 1), glyph("52,70", 3, 2),
+      glyph("4", 4, 1), glyph("99,90", 4, 2),
+    ]
+    const asked: CellBox[] = []
+    const third: Record<string, string> = { "2,1": "1", "2,2": "52,70", "3,2": "52,40" }
+    const { table: out, stats } = await verifyOcrTable(first, new Map([[1, second]]), async (boxes) => {
+      asked.push(...boxes)
+      return boxes.map((b) => [{ text: third[`${b.y0 / 20},${b.x0 / 100}`] ?? "", conf: 95 }])
+    })
+    expect(out.matrix).toEqual([
+      ["Ürün", "Adet", "Tutar"],
+      ["Çay", "2", "241,00"],
+      ["Kahve", "1", "52,70"],
+      ["Süt", "3", "52,10 (?)"],
+      ["Bal", "4", "99,90"],
+    ])
+    // Only cells where the two engines disagreed were read again.
+    expect(asked).toHaveLength(3)
+    expect(stats).toEqual({ checkedCells: 8, correctedCells: 2, uncertainCells: 1 })
+  })
+
+  it("leaves text-layer tables alone", async () => {
+    const t = { ...table([["a", "1"], ["b", "2"], ["c", "3"]]), ocr: false }
+    const { table: out } = await verifyOcrTable(t, new Map(), async () => {
+      throw new Error("must not re-read")
+    }).catch(() => ({ table: t }))
+    expect(out.matrix).toEqual(t.matrix)
+  })
+})
+
+describe("scanned number cross-check: confusable letters", () => {
+  it("counts 'l' and 'O' as digits in a vote but never accepts a single reading", async () => {
+    const box = (r: number): CellBox => ({ page: 1, x0: 0, x1: 40, y0: 20 * r, y1: 20 * r + 12, conf: 90 })
+    const t: PdfTable = {
+      matrix: [["Adet"], ["l"], ["1O"], ["3"], ["4"]],
+      boxes: [[box(0)], [box(1)], [box(2)], [box(3)], [box(4)]],
+      pages: [1, 1],
+      ocr: true,
+    }
+    const second: Glyph[] = [
+      { text: "1", x0: 5, x1: 20, y: 31, h: 10 },
+      { text: "3", x0: 5, x1: 20, y: 71, h: 10 },
+      { text: "4", x0: 5, x1: 20, y: 91, h: 10 },
+    ]
+    const { table, stats } = await verifyOcrTable(t, new Map([[1, second]]), async (boxes) => boxes.map(() => []))
+    // "l" + second reading "1" agree → 1. "1O" has no second agreeing reading → marked, not guessed.
+    expect(table.matrix.map((r) => r[0])).toEqual(["Adet", "1", "1O (?)", "3", "4"])
+    expect(stats.uncertainCells).toBe(1)
+  })
+})
+
+it("accepts a value only when two independent digit readings agree", async () => {
+  const box = (r: number, c: number): CellBox => ({ page: 1, x0: 100 * c, x1: 100 * c + 40, y0: 20 * r, y1: 20 * r + 12, conf: 60 })
+  const rows = [["Adet", "Tutar"], ["al", "12,50"], ["is", "3,00"], ["3", "4,00"], ["4", "5,00"]]
+  const t: PdfTable = { matrix: rows, boxes: rows.map((row, r) => row.map((_, c) => box(r, c))), pages: [1, 1], ocr: true }
+  // The second engine agrees on every price and on the last two quantities.
+  const second: Glyph[] = rows.slice(1).flatMap((row, i) =>
+    row.flatMap((v, c) => (c === 1 || i >= 2 ? [{ text: v, x0: 100 * c + 5, x1: 100 * c + 30, y: 20 * (i + 1) + 11, h: 10 }] : [])),
+  )
+  const { table } = await verifyOcrTable(t, new Map([[1, second]]), async (boxes) =>
+    boxes.map((b) => (b.y0 === 20 ? [{ text: "1", conf: 95 }, { text: "1", conf: 90 }] : [{ text: "7", conf: 95 }, { text: "1", conf: 90 }])),
+  )
+  expect(table.matrix.map((r) => r[0])).toEqual(["Adet", "1", "is (?)", "3", "4"])
 })
