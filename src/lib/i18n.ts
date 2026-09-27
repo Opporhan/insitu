@@ -166,6 +166,7 @@ const tr = {
     computeFailed: "Bu soru hesaplanamadı. Soruyu biraz farklı sözcüklerle tekrar sormayı dene.",
     timeout: "Yanıt çok uzun sürdü; yapay zekâ şu an yoğun olabilir. Birazdan tekrar dene.",
     retry: "Tekrar dene",
+    queryTimeout: "Bu hesap çok uzun sürdüğü için durduruldu (1 dakika). Soruyu daraltmayı dene, örneğin bir tarih aralığı veya ilk 10 sonuç.",
     cancel: "Vazgeç",
     technical: "Teknik ayrıntı",
     notNumbers:
@@ -394,6 +395,7 @@ const en: Messages = {
     computeFailed: "This question couldn't be computed. Try asking it in slightly different words.",
     timeout: "The answer took too long; the AI may be busy right now. Try again in a moment.",
     retry: "Try again",
+    queryTimeout: "This calculation took too long and was stopped (1 minute). Try narrowing the question, e.g. a date range or the top 10.",
     cancel: "Cancel",
     technical: "Technical details",
     notNumbers:

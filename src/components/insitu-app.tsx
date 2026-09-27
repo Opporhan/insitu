@@ -12,7 +12,6 @@ import { SheetSelector } from "@/components/sheet-selector"
 import { Button } from "@/components/ui/button"
 import { isAccepted, loadFile, type Dataset } from "@/lib/engine/load-file"
 import { prewarmDb } from "@/lib/engine/duckdb"
-import { runQuery } from "@/lib/engine/run-query"
 import { formatCount } from "@/lib/format"
 import type { PdfProgress, SheetInfo } from "@/lib/ingest"
 import { alignPlan, planForResult, resolveColumns, resolveView } from "@/lib/result-view"
@@ -28,7 +27,7 @@ import { buildInsight } from "@/lib/insight"
 import { loadSaved, MAX_SAVED, saveQuestions, sessionKey, type SavedQuestion } from "@/lib/session-store"
 import { followUpQuestions, readableLabel, suggestQuestions } from "@/lib/suggestions"
 import type { QueryPlan } from "@/lib/schema"
-import type { QueryResult } from "@/lib/engine/run-query"
+import { QUERY_TIMEOUT, runQuery, type QueryResult } from "@/lib/engine/run-query"
 
 type AnswerState =
   | { kind: "idle" }
@@ -168,7 +167,7 @@ export function InsituApp() {
     if (!result.ok) {
       setState({
         kind: "error",
-        message: /^Conversion Error/i.test(result.error) ? t.ask.notNumbers : t.result.sqlFailed,
+        message: engineMessage(result.error, t.result.sqlFailed),
         suggestions: [],
         question: base.question,
         detail: result.error,
@@ -206,6 +205,14 @@ export function InsituApp() {
   function dismissSaved() {
     if (storageKey) saveQuestions(storageKey, answers.map((a) => ({ question: a.question, plan: a.plan })))
     setSaved([])
+  }
+
+  /** Plain-language text for an engine error; the technical text stays under "Technical details". */
+  function engineMessage(error: string, fallback: string): string {
+    if (error === QUERY_TIMEOUT) return t.ask.queryTimeout
+    // A value that is not a number (strict casts, see strictNumericCasts) stops the query.
+    if (/^Conversion Error/i.test(error)) return t.ask.notNumbers
+    return fallback
   }
 
   function cancelAsk() {
@@ -289,7 +296,7 @@ export function InsituApp() {
         }
         // A value that is not a number (strict casts, see strictNumericCasts) stops the query.
         // Engine text is technical and English: shown only on request, never as the message.
-        return fail(/^Conversion Error/i.test(result.error) ? t.ask.notNumbers : t.ask.computeFailed, [], result.error)
+        return fail(engineMessage(result.error, t.ask.computeFailed), [], result.error)
       }
 
       const answer = toAnswer(question, plan, result, history.length)

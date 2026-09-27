@@ -18,7 +18,19 @@ const Described = z.array(z.object({ column_name: z.string(), column_type: z.str
 /** Upper bound for "export everything" so a runaway query cannot exhaust browser memory. */
 export const MAX_EXPORT_ROWS = 1_000_000
 
-export async function runQuery(sql: string, maxRows = MAX_RESULT_ROWS, booleans?: BooleanWords): Promise<QueryResult> {
+/**
+ * Longest a query may run. Questions finish in milliseconds; this only stops a runaway query
+ * (a huge self-join, a hand-edited or shared SQL) from keeping the engine busy forever.
+ */
+export const QUERY_TIMEOUT_MS = 60_000
+export const QUERY_TIMEOUT = "query-timeout"
+
+export async function runQuery(
+  sql: string,
+  maxRows = MAX_RESULT_ROWS,
+  booleans?: BooleanWords,
+  timeoutMs = QUERY_TIMEOUT_MS,
+): Promise<QueryResult> {
   const checked = guardSql(sql)
   if (!checked.ok) return { ok: false, error: checked.error, repairable: checked.error }
   const guarded = { sql: strictNumericCasts(checked.sql) }
@@ -30,17 +42,32 @@ export async function runQuery(sql: string, maxRows = MAX_RESULT_ROWS, booleans?
     const normalized = normalizeSql(guarded.sql, columns, booleans)
     if (!normalized.ok) return { ok: false, error: normalized.error, repairable: normalized.error }
 
-    // One extra row tells us whether the result was cut off.
-    const table = await conn.query(`${normalized.sql} LIMIT ${maxRows + 1}`)
-    // Arrow → JS objects in chunks, yielding between them, so large exports never freeze the page.
+    // Sent (not run) so it can be cancelled; one extra row tells us whether the result was cut off.
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      void conn.cancelSent()
+    }, timeoutMs)
     const rows: ResultRow[] = []
-    for (let start = 0; start < table.numRows; start += CHUNK_ROWS) {
-      const chunk = table.slice(start, Math.min(table.numRows, start + CHUNK_ROWS))
-      const parsed = Rows.safeParse(chunk.toArray().map((r) => r.toJSON()))
-      if (!parsed.success) return { ok: false, error: "The query returned rows in an unexpected shape.", repairable: null }
-      rows.push(...parsed.data)
-      if (start + CHUNK_ROWS < table.numRows) await yieldToBrowser()
+    try {
+      const reader = await conn.send(`${normalized.sql} LIMIT ${maxRows + 1}`, true)
+      // Arrow → JS objects batch by batch, yielding between them, so large exports never freeze the page.
+      for await (const batch of reader) {
+        for (let start = 0; start < batch.numRows; start += CHUNK_ROWS) {
+          const chunk = batch.slice(start, Math.min(batch.numRows, start + CHUNK_ROWS))
+          const parsed = Rows.safeParse(chunk.toArray().map((r) => r.toJSON()))
+          if (!parsed.success) return { ok: false, error: "The query returned rows in an unexpected shape.", repairable: null }
+          rows.push(...parsed.data)
+          await yieldToBrowser()
+        }
+      }
+    } catch (e) {
+      if (timedOut) return { ok: false, error: QUERY_TIMEOUT, repairable: null }
+      throw e
+    } finally {
+      clearTimeout(timer)
     }
+    if (timedOut) return { ok: false, error: QUERY_TIMEOUT, repairable: null }
     const complete = rows.length <= maxRows
     return { ok: true, rows: rows.slice(0, maxRows), columns: columns.map((c) => c.name), complete }
   } catch (e) {
