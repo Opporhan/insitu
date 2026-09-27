@@ -28,6 +28,7 @@ import {
 import { buildInsight } from "@/lib/insight"
 import { loadSaved, MAX_SAVED, saveQuestions, sessionKey, type SavedQuestion } from "@/lib/session-store"
 import { decodeShare, encodeShare, SHARE_KEY } from "@/lib/share"
+import { fetchImport, resolveImportUrl } from "@/lib/url-import"
 import { followUpQuestions, readableLabel, suggestQuestions } from "@/lib/suggestions"
 import type { QueryPlan } from "@/lib/schema"
 import { QUERY_TIMEOUT, runQuery, type QueryResult } from "@/lib/engine/run-query"
@@ -52,6 +53,7 @@ export function InsituApp() {
   const [dataset, setDataset] = useState<Dataset | null>(null)
   const [fileLoading, setFileLoading] = useState(false)
   const [progress, setProgress] = useState<PdfProgress | null>(null)
+  const [linkLoading, setLinkLoading] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
   const [state, setState] = useState<AnswerState>({ kind: "idle" })
   // Every answer of this file's session stays available; one is shown in full.
@@ -145,6 +147,26 @@ export function InsituApp() {
       setFileLoading(false)
       setProgress(null)
     }
+  }
+
+  async function openUrl(input: string) {
+    const target = resolveImportUrl(input)
+    if (typeof target === "string") {
+      setFileError(t.file.codes[target] ?? target)
+      return
+    }
+    setFileLoading(true)
+    setFileError(null)
+    setProgress(null)
+    setLinkLoading(true)
+    const file = await fetchImport(target)
+    setLinkLoading(false)
+    if (typeof file === "string") {
+      setFileError(t.file.codes[file] ?? file)
+      setFileLoading(false)
+      return
+    }
+    await openFile(file)
   }
 
   async function openSample() {
@@ -407,7 +429,15 @@ export function InsituApp() {
             {shared.length > 0 ? t.share.incoming(shared.length) : sharedNote}
           </p>
         )}
-        <Dropzone loading={fileLoading} progress={progress} error={fileError} onFile={(file) => void openFile(file)} onSample={openSample} />
+        <Dropzone
+          loading={fileLoading}
+          loadingText={linkLoading ? t.dropzone.urlLoading : null}
+          progress={progress}
+          error={fileError}
+          onFile={(file) => void openFile(file)}
+          onSample={openSample}
+          onUrl={(url) => void openUrl(url)}
+        />
       </div>
     )
   }

@@ -11,7 +11,8 @@ const CSP = [
   // Next.js inline bootstrap scripts; WebAssembly (DuckDB, OCR); engine scripts from jsDelivr.
   "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net",
   "worker-src 'self' blob:",
-  "connect-src 'self' https://cdn.jsdelivr.net",
+  // Files opened from a link download straight into the browser (see lib/url-import.ts).
+  "connect-src 'self' https://cdn.jsdelivr.net https://docs.google.com https://*.googleusercontent.com https://raw.githubusercontent.com https://gist.githubusercontent.com",
   "img-src 'self' data: blob:",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
