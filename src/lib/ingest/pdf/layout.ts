@@ -103,7 +103,14 @@ export function buildLines(page: PageData): Line[] {
 }
 
 const lineText = (l: Line) => l.segments.map((s) => s.text).join(" ")
-const furnitureKey = (l: Line) => lineText(l).toLocaleLowerCase("tr").replace(/\d+/g, "#").replace(/\s+/g, " ")
+/**
+ * Digits are masked so "Sayfa 1/3" and "Sayfa 2/3" match — except in lines that look like table
+ * rows (several cells with values), which only match when their text is exactly the same.
+ */
+const furnitureKey = (l: Line) => {
+  const text = lineText(l).toLocaleLowerCase("tr").replace(/\s+/g, " ")
+  return l.segments.length >= 2 && l.segments.some((s) => isValue(s.text)) ? `=${text}` : text.replace(/\d+/g, "#")
+}
 const PAGE_NUMBER = /^(sayfa|page|s\.|p\.)?\s*#\s*((\/|of|\/ ?|-)\s*#)?$|^#\s*(\/|of)\s*#$|^-\s*#\s*-$/
 
 /**
@@ -116,16 +123,16 @@ export function dropPageFurniture(pages: readonly PageData[], lines: readonly Li
     const height = page?.height ?? 0
     return l.y < height * FURNITURE_ZONE || l.y > height * (1 - FURNITURE_ZONE)
   }
-  // The header row of a table repeats at the top of every page too, but it is followed by
-  // more multi-cell lines; page furniture is not.
-  const tableTops = new Set<Line>()
+  // A table's first row (its header repeats at the top of every page) and last row (just above
+  // the footer) sit in the zone too, but next to other multi-cell lines; page furniture does not.
+  const tableRows = new Set<Line>()
   for (const pageLines of lines) {
     pageLines.forEach((l, i) => {
-      const next = pageLines[i + 1]
-      if (l.segments.length >= 2 && next && next.segments.length >= 2 && next.y - l.y <= 3 * Math.max(l.h, next.h)) tableTops.add(l)
+      const near = (o: Line | undefined) => o !== undefined && o.segments.length >= 2 && Math.abs(o.y - l.y) <= 3 * Math.max(l.h, o.h)
+      if (l.segments.length >= 2 && (near(pageLines[i + 1]) || near(pageLines[i - 1]))) tableRows.add(l)
     })
   }
-  const candidate = (l: Line) => inZone(l) && !tableTops.has(l)
+  const candidate = (l: Line) => inZone(l) && !tableRows.has(l)
   const pagesByKey = new Map<string, Set<number>>()
   for (const l of lines.flat()) {
     if (!candidate(l)) continue

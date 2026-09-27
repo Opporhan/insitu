@@ -84,6 +84,13 @@ The **TR | EN** switch in the top-right changes the UI, insight sentences, numbe
 
 Turkish / English UI · Dark (default) and light theme · Next.js 16 (App Router) · TypeScript (strict) · Tailwind CSS v4 · shadcn/ui · Recharts · DuckDB-WASM · SheetJS · Zod · Gemini API · Vitest
 
+## Security and privacy details
+
+- **Content Security Policy** and related headers (`next.config.ts`): scripts, workers and network calls may only reach this site and jsDelivr (DuckDB-WASM, OCR engine); the page cannot be framed.
+- The API accepts only DuckDB-safe column names (`[a-z0-9_]`), caps request size and SQL length, and wraps the user's question in markers the model treats as data, not instructions.
+- The SQL guard ignores quoted names and values (a column called `export` works) but checks quoted function calls.
+- **Remembered questions:** the questions you asked about a file (text and generated plan only, never data or results) are kept in this browser. Reopening the same file offers to restore them; answers are recomputed from the file.
+
 ## Run locally
 
 ```bash
@@ -95,7 +102,7 @@ npm run dev                                    # http://localhost:3000
 | Command | What it does |
 |---|---|
 | `npm test` | Unit tests (formatting, cleaning against real DuckDB, views, insights, guard, schema, i18n) |
-| `npm run eval` | Runs the 63 questions in `scripts/questions.txt` end to end with real Gemini + DuckDB |
+| `npm run eval` | Runs the 67 questions (some multi-turn) in `scripts/questions.txt` end to end with real Gemini + DuckDB |
 | `npm run typecheck` · `npm run lint` · `npm run build` | Type check, lint, production build |
 
 ## Deploy to Vercel

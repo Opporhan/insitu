@@ -48,7 +48,8 @@ export function buildInsight(view: ResultView, locale: Locale = DEFAULT_LOCALE):
 
     case "table": {
       if (view.partial) return t.tablePartial(MAX_TABLE_ROWS)
-      const rows = formatCount(view.rows.length, locale)
+      // Totals cover every result row, so the sentence counts them all, not just the ones shown.
+      const rows = formatCount(view.rowCount, locale)
       const head = view.truncated ? t.tableTruncated(MAX_TABLE_ROWS) : t.tableRows(rows)
       const totals = view.columns
         .filter((c) => c.key in view.totals)

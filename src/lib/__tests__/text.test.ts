@@ -12,10 +12,10 @@ describe("no doubled 'toplam' / 'total'", () => {
 
   it("table insight never says 'Toplam toplam' or 'Toplam satış toplamı'", () => {
     const tr = messages.tr.insight.tableTotal
-    expect(tr("Toplam Ciro", "2", "₺5")).toBe("Toplam Ciro (listelenen 2 satır): ₺5")
-    expect(tr("Satış Toplamı", "2", "₺5")).toBe("Satış Toplamı (listelenen 2 satır): ₺5")
-    expect(tr("Adet", "2", "5")).toBe("Toplam adet (listelenen 2 satır): 5")
-    expect(messages.en.insight.tableTotal("Total Revenue", "2", "₺5")).toBe("Total Revenue (2 listed rows): ₺5")
+    expect(tr("Toplam Ciro", "2", "₺5")).toBe("Toplam Ciro (2 satır): ₺5")
+    expect(tr("Satış Toplamı", "2", "₺5")).toBe("Satış Toplamı (2 satır): ₺5")
+    expect(tr("Adet", "2", "5")).toBe("Toplam Adet (2 satır): 5")
+    expect(messages.en.insight.tableTotal("Total Revenue", "2", "₺5")).toBe("Total Revenue (2 rows): ₺5")
   })
 
   it("suggestions keep one 'Toplam' whatever the measure is called", () => {

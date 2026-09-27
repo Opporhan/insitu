@@ -59,6 +59,7 @@ export function DataPrepPanel({ dataset, open, onOpenChange }: Props) {
     kind: "table",
     columns,
     rows: dataset.preview,
+    rowCount: dataset.preview.length,
     truncated: false,
     partial: false,
     totals: {},
@@ -83,6 +84,12 @@ export function DataPrepPanel({ dataset, open, onOpenChange }: Props) {
               ))}
               {structural === 0 && <li>{p.clean}</li>}
               <li className="text-foreground">{p.result(formatCount(dataset.rowCount, locale), dataset.columns.length)}</li>
+              {dataset.ambiguous.map((column) => (
+                <li key={`amb-${column}`} className="inline-flex items-start gap-1.5 text-foreground marker:text-transparent">
+                  <TriangleAlert className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+                  {p.ambiguous(column)}
+                </li>
+              ))}
               {dataset.unreadable.map((u) => (
                 <li key={u.column} className="inline-flex items-start gap-1.5 text-foreground marker:text-transparent">
                   <TriangleAlert className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />

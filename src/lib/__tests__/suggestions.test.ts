@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { humanize, isIdLike, suggestQuestions } from "@/lib/suggestions"
+import { followUpQuestions, humanize, isIdLike, suggestQuestions } from "@/lib/suggestions"
 import type { Column } from "@/lib/schema"
 
 const firma: Column[] = [
@@ -85,5 +85,25 @@ describe("isIdLike / humanize", () => {
     expect(humanize("sube_adi", "Şube Adı", "en")).toBe("branch name")
     // Unknown word → keep the original name rather than a half translation.
     expect(humanize("proje_butcesi", "Proje Bütçesi", "en")).toBe("proje bütçesi")
+  })
+})
+
+describe("followUpQuestions", () => {
+  const cols = [
+    { name: "sehir", type: "text" as const },
+    { name: "kategori", type: "text" as const },
+    { name: "tarih", type: "date" as const },
+    { name: "tutar", type: "number" as const },
+  ]
+  it("does not offer a breakdown the answer already has", () => {
+    expect(followUpQuestions(cols, "tr", new Map(), 'SELECT "sehir", SUM("tutar") FROM data GROUP BY 1')).toEqual([
+      "Sadece ilk 5'i göster",
+      "Bunu aylara göre göster",
+      "Bunu kategori bazında göster",
+    ])
+    expect(followUpQuestions(cols, "tr", new Map(), `SELECT strftime(date_trunc('month', "tarih"), '%Y-%m') AS ay, "sehir" FROM data`)).toEqual([
+      "Sadece ilk 5'i göster",
+      "Bunu kategori bazında göster",
+    ])
   })
 })

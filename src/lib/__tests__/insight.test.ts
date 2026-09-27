@@ -92,7 +92,7 @@ describe("buildInsight extras", () => {
       },
       [{ k: "S1", v: 1000.25 }, { k: "S2", v: 499.75 }],
     )
-    expect(text).toBe("2 satırlık sonuç bulundu. Toplam tutar (listelenen 2 satır): ₺1.500.")
+    expect(text).toBe("2 satırlık sonuç bulundu. Toplam Tutar (2 satır): ₺1.500.")
   })
 })
 

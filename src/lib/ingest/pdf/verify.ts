@@ -31,7 +31,9 @@ const isValue = (s: string) => NUMBER.test(compact(s)) || DATE.test(compact(s))
 const CONFUSABLE: Record<string, string> = { O: "0", o: "0", D: "0", I: "1", l: "1", "|": "1", i: "1", S: "5", s: "5", B: "8", Z: "2", z: "2", g: "9" }
 function digitize(s: string): string {
   const t = compact(s)
-  return /^[\d.,:/-]*[OoDIl|iSsBZzg][\dOoDIl|iSsBZzg.,:/-]*$/.test(t) ? t.replace(/[OoDIl|iSsBZzg]/g, (c) => CONFUSABLE[c] ?? c) : t
+  return /^[(−-]?[\d.,:/-]*[OoDIl|iSsBZzg][\dOoDIl|iSsBZzg.,:/-]*[)%]?$/.test(t)
+    ? t.replace(/[OoDIl|iSsBZzg]/g, (c) => CONFUSABLE[c] ?? c)
+    : t
 }
 
 /** A short token in a number column is a misread value ("ak" for 1), not a label. */
@@ -49,13 +51,31 @@ function altText(box: CellBox, alt: readonly Glyph[]): string | null {
   return words.length ? words.map((g) => g.text).join(" ") : null
 }
 
-/** Value columns: at least 3 filled cells, 60% of them numbers or dates. */
+const NEGATIVE = /^\s*[-−(]|-\s*$/
+/**
+ * The digits-only engines cannot see "(", ")" or "%", so a sign or percent read by the first
+ * engines is carried over — "(1.250,50)" never becomes a positive 1.250,50. When the first
+ * engines disagree about the sign, the value is not decided at all.
+ */
+function withMarks(agreed: string, marked: readonly (string | null)[]): string | undefined {
+  const readings = marked.filter((t): t is string => t !== null && isValue(digitize(t)))
+  const negative = readings.map((t) => NEGATIVE.test(t))
+  if (negative.some(Boolean) && !negative.every(Boolean)) return undefined
+  const digits = compact(agreed).replace(/^[-−(]+|[)\-%]+$/g, "")
+  const percent = readings.some((t) => t.includes("%")) || agreed.includes("%")
+  const sign = negative.some(Boolean) || NEGATIVE.test(agreed) ? "-" : ""
+  return `${sign}${digits}${percent ? "%" : ""}`
+}
+
+/** Value columns: 60% of the filled cells are numbers or dates. */
 function valueColumns(matrix: readonly Cell[][]): number[] {
   const width = Math.max(0, ...matrix.map((r) => r.length))
   const out: number[] = []
   for (let c = 0; c < width; c++) {
     const filled = matrix.map((r) => r[c]).filter((v): v is string => v !== null && v !== undefined)
-    if (filled.length >= 3 && filled.filter((v) => isValue(digitize(v))).length >= 0.6 * filled.length) out.push(c)
+    // Every value column is checked, even in a two-row table; its header cell is not counted.
+    const body = filled.length > 1 ? filled.slice(1) : filled
+    if (body.length >= 1 && body.filter((v) => isValue(digitize(v))).length >= 0.6 * body.length) out.push(c)
   }
   return out
 }
@@ -104,9 +124,10 @@ export async function verifyOcrTable(
     const agreed = readings.find((t, k) => readings.some((u, l) => l !== k && compact(u) === compact(t)))
     const row = matrix[p.r]
     if (!row) return
-    if (agreed !== undefined) {
-      if (compact(agreed) !== compact(p.first)) correctedCells++
-      row[p.c] = compact(agreed) === compact(p.first) ? p.first : compact(agreed)
+    const value = agreed === undefined ? undefined : withMarks(agreed, [p.first, p.second])
+    if (value !== undefined) {
+      if (compact(value) !== compact(p.first)) correctedCells++
+      row[p.c] = compact(value) === compact(p.first) ? p.first : value
     } else {
       uncertainCells++
       row[p.c] = `${p.first} ${UNCERTAIN_MARK}`

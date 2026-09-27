@@ -36,6 +36,8 @@ export type ResultView =
       kind: "table"
       columns: OutputColumn[]
       rows: ResultRow[]
+      /** All result rows (totals cover these), even when only the first MAX_TABLE_ROWS are shown. */
+      rowCount: number
       truncated: boolean
       /** The query returned more rows than were fetched; no totals or charts are derived. */
       partial: boolean
@@ -137,6 +139,7 @@ function table(columns: OutputColumn[], rows: readonly ResultRow[], partial = fa
     kind: "table",
     columns,
     rows: rows.slice(0, MAX_TABLE_ROWS),
+    rowCount: rows.length,
     truncated: partial || rows.length > MAX_TABLE_ROWS,
     partial,
     totals,
@@ -288,14 +291,16 @@ export function viewOptions(
   resultKeys: readonly string[],
   complete = true,
   otherLabel = OTHER_LABEL,
+  labelFor: (key: string) => string = (key) => key,
 ): ViewOption[] {
-  const planned = resolveView(plan, rows, resultKeys, complete, otherLabel)
+  const planned = resolveView(plan, rows, resultKeys, complete, otherLabel, labelFor)
   if (planned.kind === "empty") return []
   if (!complete) return [{ type: "table", view: planned }]
 
   const options: ViewOption[] = []
   for (const type of OPTION_ORDER) {
-    const view = type === planned.kind ? planned : resolveView({ ...plan, chartType: type }, rows, resultKeys, complete, otherLabel)
+    const view =
+      type === planned.kind ? planned : resolveView({ ...plan, chartType: type }, rows, resultKeys, complete, otherLabel, labelFor)
     if (view.kind !== type) continue
     if (type === "metric" && planned.kind !== "metric") continue
     if (view.kind === "line" && planned.kind !== "line" && view.x.format !== "date" && view.x.format !== "month") continue

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import { ArrowRight, Loader2, Search } from "lucide-react"
 import { useI18n } from "@/components/i18n-provider"
 import { Button } from "@/components/ui/button"
@@ -9,12 +9,19 @@ import { Input } from "@/components/ui/input"
 type Props = {
   busy: boolean
   suggestions: readonly string[]
+  suggestionsLabel: string
   onAsk: (question: string) => void
 }
 
-export function AskBar({ busy, suggestions, onAsk }: Props) {
+export function AskBar({ busy, suggestions, suggestionsLabel, onAsk }: Props) {
   const { t } = useI18n()
   const [question, setQuestion] = useState("")
+  const input = useRef<HTMLInputElement>(null)
+
+  // Ready to type on desktop; on phones focusing would open the keyboard over the prep report.
+  useEffect(() => {
+    if (window.matchMedia("(pointer: fine)").matches) input.current?.focus()
+  }, [])
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -34,8 +41,8 @@ export function AskBar({ busy, suggestions, onAsk }: Props) {
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           placeholder={t.ask.placeholder}
+          ref={input}
           autoComplete="off"
-          autoFocus
           className="h-14 rounded-xl bg-card pr-16 pl-11 text-base md:text-base"
         />
         <Button
@@ -50,7 +57,7 @@ export function AskBar({ busy, suggestions, onAsk }: Props) {
       </form>
 
       {suggestions.length > 0 && (
-        <ul className="flex flex-wrap gap-2" aria-label={t.ask.examples}>
+        <ul className="flex flex-wrap gap-2" aria-label={suggestionsLabel}>
           {suggestions.map((s) => (
             <li key={s}>
               <Button

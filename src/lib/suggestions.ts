@@ -87,6 +87,34 @@ function readableWords(name: string, original?: string): string[] {
     .map((w) => (mixedCase && /^[A-ZÇĞİÖŞÜ]{2,4}$/.test(w) ? w : w.toLocaleLowerCase("tr")))
 }
 
+/** A readable name for a result column the plan did not describe ("toplam_satis" → "Toplam satış"). */
+export function readableLabel(key: string, locale: Locale = DEFAULT_LOCALE): string {
+  const text = humanize(key, undefined, locale)
+  return text.charAt(0).toLocaleUpperCase(locale) + text.slice(1)
+}
+
+/**
+ * Follow-ups offered after an answer; they lean on the conversation context ("this"). A
+ * breakdown the answer already has (its SQL groups by that column or by month) is not offered.
+ */
+export function followUpQuestions(
+  columns: readonly Column[],
+  locale: Locale = DEFAULT_LOCALE,
+  originals: ReadonlyMap<string, string> = new Map(),
+  answerSql = "",
+): string[] {
+  const t = messages[locale].suggestions
+  const used = (name: string) => answerSql.includes(`"${name}"`)
+  const dim = columns.find((c) => c.type === "text" && !isIdLike(c.name) && !used(c.name))
+  const date = columns.find((c) => c.type === "date")
+  const monthly = /date_trunc\s*\(\s*'month'|%Y-%m'/i.test(answerSql)
+  return [
+    t.followTop,
+    ...(date && !monthly ? [t.followMonthly] : []),
+    ...(dim ? [t.followBy(humanize(dim.name, originals.get(dim.name), locale))] : []),
+  ]
+}
+
 /**
  * Example questions in everyday language, built from column headers only.
  * Turkish sentences keep column names free of suffixes so vowel harmony is never wrong

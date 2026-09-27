@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useSyncExternalStore } from "react"
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, Pie, PieChart, XAxis, YAxis } from "recharts"
 import { useI18n } from "@/components/i18n-provider"
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
@@ -19,6 +19,20 @@ const PALETTE = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--ch
 const INK = { strong: "var(--foreground)", muted: "var(--muted-foreground)", grid: "var(--border)" } as const
 const STRONG_TICK = { fill: INK.strong, style: { fill: INK.strong } }
 const MUTED_TICK = { fill: INK.muted, style: { fill: INK.muted } }
+
+const NARROW = "(max-width: 480px)"
+/** Phone-width screens: category labels get less room so the bars stay readable. */
+function useNarrow(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia(NARROW)
+      mq.addEventListener("change", onChange)
+      return () => mq.removeEventListener("change", onChange)
+    },
+    () => window.matchMedia(NARROW).matches,
+    () => false,
+  )
+}
 
 /** If an animation-end event never arrives (e.g. a background tab), still unlock export. */
 const READY_FALLBACK_MS = 4000
@@ -104,6 +118,7 @@ type Props = {
 
 export function ChartView({ view, onReady }: Props) {
   const { t, locale } = useI18n()
+  const narrow = useNarrow()
   const animate = !prefersReducedMotion()
   const seriesCount = view.kind === "pie" ? 1 : view.series.length
   const finished = useRef(0)
@@ -171,21 +186,21 @@ export function ChartView({ view, onReady }: Props) {
   const tooltip = <ChartTooltip cursor={view.kind === "line"} content={<XYTooltip x={x} y={y} series={series} locale={locale} />} />
   const legend = multi ? <ChartLegend content={<ChartLegendContent />} /> : null
   const tick = (v: unknown) => formatValue((v ?? null) as ResultValue, y.format, true, locale)
-  const xTick = (v: unknown) => truncate(formatValue((v ?? null) as ResultValue, x.format, true, locale), 26)
+  const xTick = (v: unknown) => truncate(formatValue((v ?? null) as ResultValue, x.format, true, locale), narrow ? 14 : 26)
 
   if (view.kind === "bar") {
     const longest = Math.max(...data.map((d) => xTick(d.x).length))
     const rowHeight = multi ? 18 * series.length + 18 : 40
     return (
       <ChartContainer config={config} className="aspect-auto w-full" style={{ height: Math.max(220, data.length * rowHeight + (multi ? 56 : 24)) }}>
-        <BarChart data={data} layout="vertical" margin={{ left: 4, right: multi ? 16 : 84 }} accessibilityLayer>
+        <BarChart data={data} layout="vertical" margin={{ left: 4, right: multi ? 16 : narrow ? 64 : 84 }} accessibilityLayer>
           <CartesianGrid horizontal={false} stroke={INK.grid} />
           <YAxis
             dataKey="x"
             type="category"
             tickLine={false}
             axisLine={false}
-            width={Math.min(190, Math.max(56, longest * 7 + 8))}
+            width={Math.min(narrow ? 104 : 190, Math.max(56, longest * 7 + 8))}
             tickFormatter={xTick}
             interval={0}
             // Category names are the content here, not scaffolding: full-contrast text.

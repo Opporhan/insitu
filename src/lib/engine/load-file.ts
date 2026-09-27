@@ -13,6 +13,8 @@ export type Dataset = {
   cleaned: { column: string; kind: CleanKind; currencyStripped: boolean }[]
   /** Columns that look numeric but contain values that are not numbers; kept as text. */
   unreadable: { column: string; count: number }[]
+  /** Columns of numbers like "1,250" (1.25 or 1250?), kept as text. */
+  ambiguous: string[]
   /** What ingestion did to the raw file (header row, removed rows, renamed columns…). */
   report: IngestReport
   /** First rows of the cleaned table, for the data preview. */
@@ -127,6 +129,7 @@ export async function loadFile(file: File, sheet?: string, onProgress: (p: PdfPr
           d.converted ? [{ column: d.name, kind: d.kind, currencyStripped: d.currencyStripped }] : [],
         ),
         unreadable: decisions.flatMap((d) => (d.unreadable > 0 ? [{ column: d.name, count: d.unreadable }] : [])),
+        ambiguous: decisions.flatMap((d) => (d.ambiguous ? [d.name] : [])),
         report: prepared.report,
         preview,
       },

@@ -326,3 +326,38 @@ it("accepts a value only when two independent digit readings agree", async () =>
   )
   expect(table.matrix.map((r) => r[0])).toEqual(["Adet", "1", "is (?)", "3", "4"])
 })
+
+it("keeps a table's last row on each page even when it sits in the footer zone", () => {
+  // 3 pages; each page's last data row is at y = 780 (bottom 12% of an 842pt page) and looks
+  // alike once digits are masked. The page number line below it is real furniture.
+  const g = (text: string, x0: number, y: number): Glyph => ({ text, x0, x1: x0 + text.length * 5, y, h: 10 })
+  const pages: PageData[] = [1, 2, 3].map((n) => ({
+    page: n,
+    width: 595,
+    height: 842,
+    rules: [],
+    ocr: false,
+    glyphs: [
+      g("Şube", 40, 748), g("Tutar", 300, 748),
+      g("Beşiktaş", 40, 764), g(`${n}00,00`, 300, 764),
+      g("Kadıköy", 40, 780), g(`${n}.250,50`, 300, 780),
+      g(`Sayfa ${n} / 3`, 260, 830),
+    ],
+  }))
+  const { tables, stats } = extractTables(pages)
+  const rows = tables.flatMap((t) => t.matrix).filter((r) => r[0] === "Kadıköy")
+  expect(rows).toHaveLength(3)
+  expect(stats.droppedPageFurniture).toBe(3)
+})
+
+it("keeps the sign of an accounting negative when digit engines fix its digits", async () => {
+  const box = (r: number, c: number): CellBox => ({ page: 1, x0: 100 * c, x1: 100 * c + 60, y0: 20 * r, y1: 20 * r + 12, conf: 60 })
+  const rows = [["Açıklama", "Tutar"], ["İade", "(1.250,5O)"], ["Satış", "12,00"]]
+  const t: PdfTable = { matrix: rows, boxes: rows.map((row, r) => row.map((_, c) => box(r, c))), pages: [1, 1], ocr: true }
+  const second: Glyph[] = [
+    { text: "(1.260,50)", x0: 105, x1: 150, y: 31, h: 10 },
+    { text: "12,00", x0: 105, x1: 150, y: 51, h: 10 },
+  ]
+  const { table } = await verifyOcrTable(t, new Map([[1, second]]), async (boxes) => boxes.map(() => [{ text: "1.250,50", conf: 95 }, { text: "1.250,50", conf: 90 }]))
+  expect(table.matrix[1]?.[1]).toBe("-1.250,50")
+})

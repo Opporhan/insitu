@@ -6,6 +6,12 @@ import { translator } from "@/lib/translator"
 // Protects the Gemini quota on a public deployment: 10 requests per IP per minute.
 const limiter = createRateLimiter({ limit: 10, windowMs: 60_000 })
 
+/** A real request (question, ≤ 200 column names, ≤ 3 earlier turns) is a few KB. */
+const MAX_BODY_BYTES = 64 * 1024
+
+// Three model fallbacks × 30 s is the worst case; stop well before a runaway invocation.
+export const maxDuration = 60
+
 /**
  * The only server endpoint. Receives the question and column headers — never
  * row data (the strict schema rejects any extra field) — and returns a query plan.
@@ -25,7 +31,20 @@ export async function POST(request: Request): Promise<Response> {
     )
   }
 
-  const body: unknown = await request.json().catch(() => null)
+  const raw = await request.text().catch(() => "")
+  if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) {
+    return Response.json(
+      { ok: false, error: messages[headerLocale].server.invalid, suggestions: [] } satisfies TranslateResponse,
+      { status: 413 },
+    )
+  }
+  const body: unknown = (() => {
+    try {
+      return JSON.parse(raw) as unknown
+    } catch {
+      return null
+    }
+  })()
   const parsed = TranslateRequest.safeParse(body)
   if (!parsed.success) {
     return Response.json(

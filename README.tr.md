@@ -84,6 +84,13 @@ Sağ üstteki **TR | EN** düğmesiyle arayüz, içgörü cümleleri, sayı ve t
 
 Türkçe / İngilizce arayüz (sağ üstten) · Karanlık (varsayılan) ve aydınlık tema · Next.js 16 (App Router) · TypeScript (katı mod) · Tailwind CSS v4 · shadcn/ui · Recharts · DuckDB-WASM · SheetJS · Zod · Gemini API · Vitest
 
+## Güvenlik ve gizlilik ayrıntıları
+
+- **Content Security Policy** ve ilgili başlıklar (`next.config.ts`): betikler, worker'lar ve ağ çağrıları yalnızca bu siteye ve jsDelivr'a (DuckDB-WASM, OCR motoru) gidebilir; sayfa başka sitelere gömülemez.
+- API yalnızca DuckDB-güvenli sütun adlarını (`[a-z0-9_]`) kabul eder, istek boyutunu ve SQL uzunluğunu sınırlar; kullanıcının sorusu modelin talimat değil veri olarak gördüğü işaretler arasına alınır.
+- SQL guard tırnak içindeki adları ve değerleri yok sayar (`export` adlı sütun çalışır) ama tırnaklı fonksiyon çağrılarını denetler.
+- **Hatırlanan sorular:** Bir dosya için sorduğun sorular (yalnızca metin ve üretilen plan; veri veya sonuç asla) bu tarayıcıda saklanır. Aynı dosyayı yeniden açınca geri yüklemek ister misin diye sorulur; cevaplar dosyadan yeniden hesaplanır.
+
 ## Yerelde çalıştırma
 
 ```bash
@@ -95,7 +102,7 @@ npm run dev                                     # http://localhost:3000
 | Komut | Ne yapar |
 |---|---|
 | `npm test` | Birim testleri (biçimlendirme, temizleme — gerçek DuckDB ile, görünüm, içgörü, guard, şema) |
-| `npm run eval` | `scripts/questions.txt` içindeki 63 soruyu gerçek Gemini + DuckDB ile uçtan uca çalıştırır |
+| `npm run eval` | `scripts/questions.txt` içindeki 67 soruyu (bazıları çok turlu) gerçek Gemini + DuckDB ile uçtan uca çalıştırır |
 | `npm run typecheck` · `npm run lint` · `npm run build` | Tip denetimi, lint, üretim derlemesi |
 
 ## Vercel'e yayınlama

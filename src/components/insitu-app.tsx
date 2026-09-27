@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { FileSpreadsheet, MessagesSquare, RotateCcw, X } from "lucide-react"
+import { FileSpreadsheet, History, Layers, MessagesSquare, RotateCcw, X } from "lucide-react"
 import { AnswerHistory } from "@/components/answer-history"
 import { AskBar } from "@/components/ask-bar"
 import { DataPrepPanel } from "@/components/data-prep-panel"
@@ -16,11 +16,28 @@ import { runQuery } from "@/lib/engine/run-query"
 import { formatCount } from "@/lib/format"
 import type { PdfProgress, SheetInfo } from "@/lib/ingest"
 import { alignPlan, resolveColumns, resolveView } from "@/lib/result-view"
-import { MAX_HISTORY, TranslateResponse, type HistoryTurn, type RepairContext, type TranslateRequest } from "@/lib/schema"
-import { humanize, suggestQuestions } from "@/lib/suggestions"
-import { capitalize } from "@/lib/text"
+import {
+  MAX_HISTORY,
+  MAX_SQL_CHARS,
+  TranslateResponse,
+  type HistoryTurn,
+  type RepairContext,
+  type TranslateRequest,
+} from "@/lib/schema"
+import { buildInsight } from "@/lib/insight"
+import { loadSaved, MAX_SAVED, saveQuestions, sessionKey, type SavedQuestion } from "@/lib/session-store"
+import { followUpQuestions, readableLabel, suggestQuestions } from "@/lib/suggestions"
+import type { QueryPlan } from "@/lib/schema"
+import type { QueryResult } from "@/lib/engine/run-query"
 
-type AnswerState = { kind: "idle" } | { kind: "asking" } | { kind: "error"; message: string; suggestions: string[] }
+type AnswerState =
+  | { kind: "idle" }
+  | { kind: "asking" }
+  /** `question` allows "Try again"; `detail` is the raw engine text, shown only on request. */
+  | { kind: "error"; message: string; suggestions: string[]; question: string; detail?: string }
+
+/** Longest wait for the translator (it may try three models) before the user is told. */
+const ASK_TIMEOUT_MS = 45_000
 
 /** Answers kept in the session history (newest first). */
 const MAX_ANSWERS = 20
@@ -40,12 +57,28 @@ export function InsituApp() {
   const [activeId, setActiveId] = useState<number | null>(null)
   const resultRef = useRef<HTMLDivElement>(null)
   const answerCount = useRef(0)
+  // Bumped when a file is opened or closed: an answer that arrives later belongs to the old file.
+  const session = useRef(0)
+  const pending = useRef<AbortController | null>(null)
   // Earlier questions + their SQL, so follow-ups ("and how many units?") keep the context.
   const [history, setHistory] = useState<HistoryTurn[]>([])
   // Workbook with several sheets: the user picks one before anything is loaded.
   const [sheetChoice, setSheetChoice] = useState<{ file: File; sheets: SheetInfo[] } | null>(null)
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [prepOpen, setPrepOpen] = useState(true)
+  // Questions saved for this file in an earlier visit, offered for restoring (never auto-run).
+  const [saved, setSaved] = useState<SavedQuestion[]>([])
+  const [restoring, setRestoring] = useState(false)
+  const storageKey = dataset ? sessionKey(`${dataset.fileName}#${dataset.report.sheet ?? ""}`, dataset.rowCount, dataset.columns) : null
+
+  // Remember this file's questions (text + plan only). Nothing is written until there is an
+  // answer, so opening a file never erases what an earlier visit saved.
+  useEffect(() => {
+    if (!storageKey || answers.length === 0) return
+    const current = answers.map((a) => ({ question: a.question, plan: a.plan }))
+    const seen = new Set(current.map((q) => q.question))
+    saveQuestions(storageKey, [...current, ...saved.filter((q) => !seen.has(q.question))].slice(0, MAX_SAVED))
+  }, [storageKey, answers, saved])
 
   // Fetch and start the in-browser engine while the user is still choosing a file.
   useEffect(() => prewarmDb(), [])
@@ -66,7 +99,11 @@ export function InsituApp() {
       }
       setSheetChoice(null)
       setSourceFile(file)
+      pending.current?.abort()
+      session.current++
       setDataset(loaded.dataset)
+      const d = loaded.dataset
+      setSaved(loadSaved(sessionKey(`${d.fileName}#${d.report.sheet ?? ""}`, d.rowCount, d.columns)))
       setState({ kind: "idle" })
       setAnswers([])
       setActiveId(null)
@@ -82,23 +119,109 @@ export function InsituApp() {
   }
 
   async function openSample() {
-    const res = await fetch(SAMPLE_URL)
-    await openFile(new File([await res.blob()], "satislar.csv", { type: "text/csv" }))
+    setFileLoading(true)
+    setFileError(null)
+    try {
+      const res = await fetch(SAMPLE_URL)
+      if (!res.ok) throw new Error(String(res.status))
+      await openFile(new File([await res.blob()], "satislar.csv", { type: "text/csv" }))
+    } catch {
+      setFileError(t.file.sampleFailed)
+      setFileLoading(false)
+    }
   }
 
-  async function translate(payload: TranslateRequest): Promise<TranslateResponse | null> {
+  async function translate(payload: TranslateRequest, signal: AbortSignal): Promise<TranslateResponse | null> {
     const res = await fetch("/api/translate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      signal,
     }).catch(() => null)
     const parsed = TranslateResponse.safeParse(res ? await res.json().catch(() => null) : null)
     return parsed.success ? parsed.data : null
   }
 
+  function toAnswer(question: string, plan: QueryPlan, result: Extract<QueryResult, { ok: true }>, contextTurns: number): Answer {
+    // A result column the plan did not describe still gets a readable name ("toplam_satis" → "Toplam satış").
+    const labelFor = (key: string) => readableLabel(key, locale)
+    return {
+      id: ++answerCount.current,
+      question,
+      plan,
+      rows: result.rows,
+      complete: result.complete,
+      resultColumns: resolveColumns(alignPlan(plan, result.columns).columns, result.columns, result.rows, labelFor),
+      view: resolveView(plan, result.rows, result.columns, result.complete, t.insight.other, labelFor),
+      contextTurns,
+    }
+  }
+
+  /** Re-runs the saved plans on this file, in the browser; the translator is not called. */
+  async function restoreSaved() {
+    const mine = session.current
+    setRestoring(true)
+    const restored: Answer[] = []
+    for (const q of [...saved].reverse()) {
+      const result = await runQuery(q.plan.sql)
+      if (mine !== session.current) return
+      if (result.ok) restored.unshift(toAnswer(q.question, q.plan, result, 0))
+    }
+    setSaved([])
+    setRestoring(false)
+    const seen = new Set(answers.map((a) => a.question))
+    const merged = [...answers, ...restored.filter((a) => !seen.has(a.question))].slice(0, MAX_ANSWERS)
+    setAnswers(merged)
+    const first = merged[0]
+    if (activeId === null && first) setActiveId(first.id)
+    setPrepOpen(false)
+  }
+
+  function dismissSaved() {
+    if (storageKey) saveQuestions(storageKey, answers.map((a) => ({ question: a.question, plan: a.plan })))
+    setSaved([])
+  }
+
+  function cancelAsk() {
+    const controller = pending.current
+    pending.current = null // marks the running question stale before it notices the abort
+    controller?.abort()
+    setState({ kind: "idle" })
+  }
+
   async function ask(question: string) {
     if (!dataset) return
+    pending.current?.abort()
+    const controller = new AbortController()
+    pending.current = controller
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, ASK_TIMEOUT_MS)
+    const mine = session.current
+    // Stale: the file changed or the user cancelled / asked again while this one was running.
+    const stale = () => mine !== session.current || pending.current !== controller
     setState({ kind: "asking" })
+    try {
+      await askOnce(question, controller, mine, stale, () => timedOut)
+    } finally {
+      clearTimeout(timer)
+      if (pending.current === controller) pending.current = null
+    }
+  }
+
+  async function askOnce(
+    question: string,
+    controller: AbortController,
+    mine: number,
+    stale: () => boolean,
+    timedOut: () => boolean,
+  ) {
+    if (!dataset) return
+    const fail = (message: string, suggestions: string[] = [], detail?: string) => {
+      if (mine === session.current) setState({ kind: "error", message, suggestions, question, ...(detail ? { detail } : {}) })
+    }
 
     let repair: RepairContext | undefined
     // One run plus one repair round for structural SQL errors (unknown column, syntax…).
@@ -112,50 +235,35 @@ export function InsituApp() {
         ...(repair ? { repair } : {}),
         ...(history.length > 0 ? { history } : {}),
       }
-      const translated = await translate(payload)
-      if (!translated) {
-        setState({ kind: "error", message: t.ask.translateFailed, suggestions: [] })
+      const translated = await translate(payload, controller.signal)
+      if (controller.signal.aborted) {
+        // Cancelled or replaced by a newer question: nothing to show. Timed out: say so.
+        if (timedOut()) fail(t.ask.timeout)
         return
       }
-      if (!translated.ok) {
-        setState({ kind: "error", message: translated.error, suggestions: translated.suggestions })
-        return
-      }
+      if (stale()) return
+      if (!translated) return fail(t.ask.translateFailed)
+      if (!translated.ok) return fail(translated.error, translated.suggestions)
 
       const plan = translated.plan
       const result = await runQuery(plan.sql)
+      if (stale()) return
       if (!result.ok) {
-        if (attempt === 0 && result.repairable) {
+        if (attempt === 0 && result.repairable && plan.sql.length <= MAX_SQL_CHARS) {
           repair = { sql: plan.sql, error: result.repairable }
           continue
         }
-        setState({
-          kind: "error",
-          // A value that is not a number (strict casts, see strictNumericCasts) stops the query.
-          message: /^Conversion Error/i.test(result.error) ? t.ask.notNumbers : t.ask.computeFailed(result.error),
-          suggestions: [],
-        })
-        return
+        // A value that is not a number (strict casts, see strictNumericCasts) stops the query.
+        // Engine text is technical and English: shown only on request, never as the message.
+        return fail(/^Conversion Error/i.test(result.error) ? t.ask.notNumbers : t.ask.computeFailed, [], result.error)
       }
 
-      // A result column the plan did not describe still gets a readable name ("toplam_satis" → "Toplam satış").
-      const labelFor = (key: string) => capitalize(humanize(key, undefined, locale), locale)
-      const view = resolveView(plan, result.rows, result.columns, result.complete, t.insight.other, labelFor)
-      const resultColumns = resolveColumns(alignPlan(plan, result.columns).columns, result.columns, result.rows, labelFor)
-      const answer: Answer = {
-        id: ++answerCount.current,
-        question,
-        plan,
-        rows: result.rows,
-        complete: result.complete,
-        resultColumns,
-        view,
-        contextTurns: history.length,
-      }
+      const answer = toAnswer(question, plan, result, history.length)
       setAnswers((prev) => [answer, ...prev].slice(0, MAX_ANSWERS))
       setActiveId(answer.id)
       setState({ kind: "idle" })
-      setHistory([...history, { question, sql: plan.sql }].slice(-MAX_HISTORY))
+      // An unusually long query is not kept as context (the server caps SQL length).
+      setHistory([...history, { question, sql: plan.sql }].filter((h) => h.sql.length <= MAX_SQL_CHARS).slice(-MAX_HISTORY))
       // The prep report has done its job once the user is asking questions; keep it one click away.
       setPrepOpen(false)
       return
@@ -194,15 +302,25 @@ export function InsituApp() {
     if (!answer) return
     setActiveId(id)
     // A follow-up now refers to the answer on screen, not to the most recently asked one.
-    setHistory([{ question: answer.question, sql: answer.plan.sql }])
+    setHistory(answer.plan.sql.length <= MAX_SQL_CHARS ? [{ question: answer.question, sql: answer.plan.sql }] : [])
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches
     requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" }))
   }
+  const originals = new Map(dataset.report.renamedColumns.map((c) => [c.to, c.from]))
+  const followingUp = state.kind === "idle" && answers.length > 0 && history.length > 0
   const suggestions =
-    // Built here (not taken from the server) so they use the file's original headers and the current language.
-    state.kind === "error" || (state.kind === "idle" && answers.length === 0)
-      ? suggestQuestions(dataset.columns, locale, new Map(dataset.report.renamedColumns.map((c) => [c.to, c.from])))
-      : []
+    // After an error, the translator's own rephrasings come first; after an answer, follow-ups
+    // on it; otherwise examples built from the file's original headers in the current language.
+    state.kind === "error" && state.suggestions.length > 0
+      ? state.suggestions
+      : followingUp
+        ? followUpQuestions(dataset.columns, locale, originals, active?.plan.sql ?? "")
+        : state.kind === "error" || (state.kind === "idle" && answers.length === 0)
+          ? suggestQuestions(dataset.columns, locale, originals)
+          : []
+  const sheetLabel = dataset.report.pdf
+    ? `${t.sheets.pdfTable(dataset.report.sheet ?? "", dataset.report.pdf.tablePages)} · ${t.sheets.pdfChange}`
+    : `${dataset.report.sheet} · ${t.sheets.change}`
   const cleanedNotes = dataset.cleaned.map(
     (c) =>
       `${c.column}: ${[(t.dataset.cleanNotes as Partial<Record<string, string>>)[c.kind], c.currencyStripped ? t.dataset.currencyStripped : null]
@@ -219,23 +337,27 @@ export function InsituApp() {
           <span className="shrink-0">· {t.dataset.summary(formatCount(dataset.rowCount, locale), dataset.columns.length)}</span>
         </span>
         {cleanedNotes.length > 0 && (
-          <span
-            className="hidden shrink-0 rounded-md border px-2 py-0.5 text-xs text-primary sm:inline"
+          // Opens the prep report, which lists every change (works with touch and keyboard, not just hover).
+          <Button
+            variant="outline"
+            className="hidden h-11 shrink-0 px-3 text-xs text-primary sm:inline-flex"
             title={cleanedNotes.join("\n")}
+            onClick={() => setPrepOpen(true)}
           >
             {t.dataset.cleaned(cleanedNotes.length)}
-          </span>
+          </Button>
         )}
         {dataset.report.sheets.length > 1 && sourceFile && (
           <Button
             variant="ghost"
-            className="h-11 shrink-0 px-3 text-xs"
+            className="h-11 min-w-11 shrink-0 px-3 text-xs"
             disabled={busy || fileLoading}
+            aria-label={sheetLabel}
+            title={sheetLabel}
             onClick={() => setSheetChoice({ file: sourceFile, sheets: dataset.report.sheets })}
           >
-            {dataset.report.pdf
-              ? `${t.sheets.pdfTable(dataset.report.sheet ?? "", dataset.report.pdf.tablePages)} · ${t.sheets.pdfChange}`
-              : `${dataset.report.sheet} · ${t.sheets.change}`}
+            <Layers className="sm:hidden" aria-hidden />
+            <span className="hidden sm:inline">{sheetLabel}</span>
           </Button>
         )}
         <Button
@@ -244,6 +366,8 @@ export function InsituApp() {
           className="size-11"
           aria-label={t.dataset.close}
           onClick={() => {
+            pending.current?.abort()
+            session.current++
             setDataset(null)
             setState({ kind: "idle" })
             setHistory([])
@@ -255,7 +379,12 @@ export function InsituApp() {
         </Button>
       </div>
 
-      <AskBar busy={busy} suggestions={suggestions} onAsk={ask} />
+      <AskBar busy={busy} suggestions={suggestions} suggestionsLabel={followingUp ? t.ask.followUps : t.ask.examples} onAsk={ask} />
+
+      {/* Announces each new answer to screen readers (the region exists before its text changes). */}
+      <p className="sr-only" aria-live="polite">
+        {!busy && active ? `${active.plan.title}. ${buildInsight(active.view, locale)}` : ""}
+      </p>
 
       {history.length > 0 && (
         <div className="-mt-3 flex items-center gap-2 text-xs text-muted-foreground">
@@ -268,14 +397,45 @@ export function InsituApp() {
       )}
 
       {state.kind === "error" && (
-        <p role="alert" className="text-sm text-destructive">
-          {state.message}
-        </p>
+        <div role="alert" className="flex flex-col gap-2 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-destructive">{state.message}</p>
+            <Button variant="outline" size="sm" className="h-11 px-3" onClick={() => void ask(state.question)}>
+              <RotateCcw aria-hidden /> {t.ask.retry}
+            </Button>
+          </div>
+          {state.detail && (
+            <details className="text-xs text-muted-foreground">
+              <summary className="min-h-11 cursor-pointer content-center">{t.ask.technical}</summary>
+              <code className="block rounded-md border bg-background p-2 font-mono break-all">{state.detail}</code>
+            </details>
+          )}
+        </div>
+      )}
+
+      {saved.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground">
+          <History className="size-4 shrink-0 text-primary" aria-hidden />
+          <span className="min-w-0 flex-1">{t.session.offer(saved.length)}</span>
+          <Button variant="outline" size="sm" className="h-11 px-3" disabled={busy || restoring} onClick={() => void restoreSaved()}>
+            {restoring ? t.session.restoring : t.session.restore}
+          </Button>
+          <Button variant="ghost" size="sm" className="h-11 px-3" disabled={restoring} onClick={dismissSaved}>
+            {t.session.dismiss}
+          </Button>
+        </div>
       )}
 
       <DataPrepPanel dataset={dataset} open={prepOpen} onOpenChange={setPrepOpen} />
 
-      {busy && <div className="h-96 animate-pulse rounded-xl border bg-card" aria-label={t.ask.computing} />}
+      {busy && (
+        <div role="status" className="flex h-96 flex-col items-center justify-center gap-3 rounded-xl border bg-card">
+          <span className="animate-pulse text-sm text-muted-foreground">{t.ask.computing}…</span>
+          <Button variant="ghost" className="h-11 px-4 text-muted-foreground" onClick={cancelAsk}>
+            <X aria-hidden /> {t.ask.cancel}
+          </Button>
+        </div>
+      )}
 
       <div ref={resultRef} className="scroll-mt-4">
         {!busy && active && (

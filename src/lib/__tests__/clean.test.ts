@@ -50,6 +50,31 @@ describe("load-time cleaning (real DuckDB)", () => {
     expect(decideColumn("ilce", text!).unreadable).toBe(0)
   })
 
+  it("reads accounting negatives: (1.250,50), 1.250,50- and the Unicode minus", async () => {
+    const { kinds, data } = await clean({ tutar: ["(1.250,50)", "1.250,50-", "−99,90", "10,00", "₺ (5,00)"] })
+    expect(kinds["tutar"]).toBe("tr-number")
+    expect(data.map((r) => r["tutar"])).toEqual([-1250.5, -1250.5, -99.9, 10, -5])
+  })
+
+  it("never guesses between 1,250 = 1.25 and 1,250 = 1250", async () => {
+    const amb = await clean({ miktar: ["1,250", "2,500", "12,000"] })
+    expect(amb.kinds["miktar"]).toBe("text")
+    // Any value that settles it decides the column.
+    expect((await clean({ m: ["1,250", "2,5", "3,75"] })).data.map((r) => r["m"])).toEqual([1.25, 2.5, 3.75])
+    expect((await clean({ m: ["1,250", "1,250,000"] })).data.map((r) => r["m"])).toEqual([1250, 1250000])
+  })
+
+  it("keeps numbers longer than 18 digits (card numbers, long IDs) as text", async () => {
+    const { kinds } = await clean({ kart: ["12345678901234567890", "98765432109876543210"] })
+    expect(kinds["kart"]).toBe("text")
+  })
+
+  it("treats Excel error values as empty", async () => {
+    const { kinds, data } = await clean({ oran: ["#DIV/0!", "#DEĞER!", "12", "#SAYI/0!"] })
+    expect(kinds["oran"]).toBe("integer")
+    expect(data.map((r) => r["oran"])).toEqual([null, null, 12, null])
+  })
+
   it("treats an all-'1.250' column as Turkish thousands, not 1.25", async () => {
     const { kinds, data } = await clean({ fiyat: ["1.250", "2.500", "12.000"] })
     expect(kinds["fiyat"]).toBe("tr-number")

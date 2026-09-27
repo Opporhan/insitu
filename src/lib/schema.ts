@@ -10,14 +10,24 @@ import { LOCALES } from "@/lib/i18n"
 export const ColumnType = z.enum(["number", "text", "date"])
 export type ColumnType = z.infer<typeof ColumnType>
 
+/**
+ * The browser sends DuckDB-safe snake_case names (see `sanitizeName`). Enforcing that shape on
+ * the server keeps quotes, newlines and prose out of the prompt, so a column name can never
+ * carry instructions to the model.
+ */
+export const COLUMN_NAME = /^[a-z0-9_]{1,64}$/
+
 export const Column = z.strictObject({
-  name: z.string().min(1).max(128),
+  name: z.string().regex(COLUMN_NAME),
   type: ColumnType,
 })
 export type Column = z.infer<typeof Column>
 
+/** Generated SQL is a few hundred characters; the cap only stops the endpoint being used for bulk text. */
+export const MAX_SQL_CHARS = 4000
+
 export const RepairContext = z.strictObject({
-  sql: z.string().min(1).max(8000),
+  sql: z.string().min(1).max(MAX_SQL_CHARS),
   error: z.string().min(1).max(600),
 })
 export type RepairContext = z.infer<typeof RepairContext>
@@ -28,7 +38,7 @@ export type RepairContext = z.infer<typeof RepairContext>
  */
 export const HistoryTurn = z.strictObject({
   question: z.string().trim().min(2).max(500),
-  sql: z.string().min(1).max(8000),
+  sql: z.string().min(1).max(MAX_SQL_CHARS),
 })
 export type HistoryTurn = z.infer<typeof HistoryTurn>
 

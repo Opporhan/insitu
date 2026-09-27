@@ -9,7 +9,11 @@ import { quoteIdent } from "@/lib/sql"
  * and leaves "1.250,50 TL" or "05.01.2025" as text.
  */
 
-const NULL_TOKENS = ["", "-", "—", "n/a", "na", "null", "none", "nan", "#n/a", "#yok"]
+const NULL_TOKENS = [
+  "", "-", "—", "n/a", "na", "null", "none", "nan", "#n/a", "#yok",
+  // Excel error values exported as text (English and Turkish Excel).
+  "#div/0!", "#sayı/0!", "#sayi/0!", "#value!", "#değer!", "#ref!", "#başv!", "#name?", "#ad?", "#num!", "#sayı!", "#sayi!", "#null!", "#boş!",
+]
 const MONEY_NOISE = "(₺|TL|TRY|USD|EUR|\\$|€|%|\\s)"
 
 // Time part shared by all date layouts.
@@ -20,13 +24,17 @@ const ISO_FORMATS = ["%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%
 const DMY_FORMATS = ["%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M", "%d.%m.%Y"]
 const MDY_FORMATS = ["%m.%d.%Y %H:%M:%S", "%m.%d.%Y %H:%M", "%m.%d.%Y"]
 
-const INT_RE = "[-+]?\\d+"
+/** Up to 18 digits: longer "numbers" (card numbers, long IDs) do not fit BIGINT and stay text. */
+const INT_RE = "[-+]?\\d{1,18}"
 const LEADING_ZERO_RE = "[-+]?0\\d+"
 const DOT_DECIMAL_RE = "[-+]?\\d*\\.\\d+"
 /** "1.250": a US decimal or a Turkish thousand — cannot tell from the value alone. */
 const AMBIGUOUS_RE = "[-+]?[1-9]\\d{0,2}\\.\\d{3}"
 const TR_RE = "[-+]?[1-9]\\d{0,2}(\\.\\d{3})+(,\\d+)?|[-+]?\\d+,\\d+"
 const US_THOUSANDS_RE = "[-+]?[1-9]\\d{0,2}(,\\d{3})+(\\.\\d+)?"
+/** "1,250": a Turkish decimal or a US thousand — cannot tell from the value alone. */
+const AMBIGUOUS_COMMA_RE = "[-+]?[1-9]\\d{0,2}(,\\d{3})+"
+const COMMA_DECIMAL_RE = "[-+]?\\d+,\\d+"
 
 function list(values: readonly string[]): string {
   return `[${values.map((v) => `'${v}'`).join(", ")}]`
@@ -38,9 +46,17 @@ function valueExpr(col: string): string {
   return `CASE WHEN lower(trim(${c})) IN (${NULL_TOKENS.map((t) => `'${t}'`).join(", ")}) THEN NULL ELSE trim(${c}) END`
 }
 
-/** Value with currency symbols, percent signs and spaces removed. */
+/**
+ * Accounting notation to a plain sign: "(1.250,00)" and "1.250,00-" → "-1.250,00", and the
+ * Unicode minus "−" → "-". Only a whole value made of digits and separators is touched.
+ */
+function signExpr(x: string): string {
+  return `regexp_replace(regexp_replace(replace(${x}, '−', '-'), '^\\(([0-9.,]+)\\)$', '-\\1'), '^([0-9.,]+)-$', '-\\1')`
+}
+
+/** Value with currency symbols, percent signs and spaces removed, accounting signs normalized. */
 function moneyExpr(col: string): string {
-  return `regexp_replace(${valueExpr(col)}, '${MONEY_NOISE}', '', 'gi')`
+  return signExpr(`regexp_replace(${valueExpr(col)}, '${MONEY_NOISE}', '', 'gi')`)
 }
 
 /** "05/01/2025" or "05-01-2025" → "05.01.2025". Only the date part is touched. */
@@ -54,7 +70,7 @@ function dashedExpr(col: string): string {
 }
 
 const PROFILE_FIELDS = [
-  "n", "int", "lead0", "dot", "amb", "tr", "usk", "stripped", "isoShape", "dmyShape", "iso", "dmy", "mdy", "time", "fracDot", "fracComma",
+  "n", "int", "lead0", "dot", "amb", "tr", "usk", "ambComma", "commaDec", "stripped", "isoShape", "dmyShape", "iso", "dmy", "mdy", "time", "fracDot", "fracComma",
 ] as const
 type ProfileField = (typeof PROFILE_FIELDS)[number]
 export type ColumnProfile = Record<ProfileField, number>
@@ -70,7 +86,8 @@ export function profileSql(table: string, columns: readonly string[]): string {
       const v = `v${i}`
       return [
         v,
-        `regexp_replace(${v}, '${MONEY_NOISE}', '', 'gi') AS m${i}`,
+        `${signExpr(`regexp_replace(${v}, '${MONEY_NOISE}', '', 'gi')`)} AS m${i}`,
+        `regexp_replace(${v}, '${MONEY_NOISE}', '', 'gi') AS s${i}`,
         `regexp_replace(${v}, '^(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4})', '\\1.\\2.\\3') AS dt${i}`,
         `regexp_replace(${v}, '^(\\d{4})[./-](\\d{1,2})[./-](\\d{1,2})', '\\1-\\2-\\3') AS ds${i}`,
       ].join(", ")
@@ -88,7 +105,10 @@ export function profileSql(table: string, columns: readonly string[]): string {
       p("amb", match(AMBIGUOUS_RE)),
       p("tr", match(TR_RE)),
       p("usk", match(US_THOUSANDS_RE)),
-      p("stripped", `count(*) FILTER (WHERE ${m} <> ${v})`),
+      p("ambComma", match(AMBIGUOUS_COMMA_RE)),
+      p("commaDec", match(COMMA_DECIMAL_RE)),
+      // Currency/percent/space removal only; accounting signs are not "stripped" noise.
+      p("stripped", `count(*) FILTER (WHERE s${i} <> ${v})`),
       // Cheap shape checks only; real date parsing runs later, and only where every value has the shape.
       p("isoShape", `count(*) FILTER (WHERE regexp_full_match(${dashed}, '${ISO_RE}'))`),
       p("dmyShape", `count(*) FILTER (WHERE regexp_full_match(${dotted}, '${DMY_RE}'))`),
@@ -169,6 +189,8 @@ export type ColumnDecision = {
   converted: boolean
   currencyStripped: boolean
   unreadable: number
+  /** Numbers like "1,250" that are either 1.25 or 1250: kept as text rather than guessed. */
+  ambiguous: boolean
 }
 
 const CONVERTED: ReadonlySet<CleanKind> = new Set(["tr-number", "us-thousands", "dmy-date", "mdy-date"])
@@ -189,13 +211,14 @@ export function decideColumn(name: string, p: ColumnProfile): ColumnDecision {
   const v = valueExpr(name)
   const m = moneyExpr(name)
   const dateType = p.time > 0 ? "TIMESTAMP" : "DATE"
-  const make = (kind: CleanKind, expr: string, stripped = false, unreadable = 0): ColumnDecision => ({
+  const make = (kind: CleanKind, expr: string, stripped = false, unreadable = 0, ambiguous = false): ColumnDecision => ({
     name,
     kind,
     expr,
     converted: CONVERTED.has(kind) || stripped,
     currencyStripped: stripped,
     unreadable,
+    ambiguous,
   })
   const stripped = p.stripped > 0
 
@@ -211,6 +234,9 @@ export function decideColumn(name: string, p: ColumnProfile): ColumnDecision {
   if (p.int + p.dot === p.n && p.dot > p.amb) {
     return make("decimal", `TRY_CAST(${m} AS ${numericType(p.fracDot)})`, stripped)
   }
+  // Every comma value looks like "1,250" / "12,500": Turkish decimal or US thousand? A wrong
+  // guess is a 1000× error, so the column stays text and the user is told why.
+  if (p.int + p.tr === p.n && p.commaDec > 0 && p.ambComma === p.commaDec) return make("text", v, false, 0, true)
   // Turkish format; the ambiguous "1.250" matches TR_RE and is read as a thousand.
   if (p.int + p.tr === p.n) {
     return make("tr-number", `TRY_CAST(replace(replace(${m}, '.', ''), ',', '.') AS ${numericType(p.fracComma)})`, stripped)

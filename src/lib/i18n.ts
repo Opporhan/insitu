@@ -33,6 +33,7 @@ export function requestLocale(cookieHeader: string | null, acceptLanguage: strin
 
 type CleanKey = "tr-number" | "us-thousands" | "dmy-date" | "mdy-date"
 
+
 const tr = {
   languageName: "Türkçe",
   meta: {
@@ -61,6 +62,7 @@ const tr = {
   },
   file: {
     unsupported: "Şimdilik yalnızca CSV, Excel ve PDF dosyaları destekleniyor.",
+    sampleFailed: "Örnek veri yüklenemedi; bağlantını kontrol edip tekrar dene.",
     readFailed: (detail: string) => `Dosya okunamadı: ${detail}`,
     codes: {
       "no-sheet": "Excel dosyasında sayfa bulunamadı.",
@@ -85,6 +87,12 @@ const tr = {
     size: (rows: string, columns: number) => `${rows} dolu satır · ${columns} sütun`,
     cancel: "Vazgeç",
     change: "Sekme değiştir",
+  },
+  session: {
+    offer: (n: number) => `Bu dosyada daha önce sorduğun ${n} soru var. Cevaplar dosyandan yeniden hesaplanır.`,
+    restore: "Geri yükle",
+    restoring: "Hesaplanıyor…",
+    dismiss: "Yok say",
   },
   history: {
     title: "Önceki cevaplar",
@@ -111,6 +119,8 @@ const tr = {
     pageFurniture: (n: number) => `${n} sayfa üst/alt bilgisi satırı (sayfa numarası, rapor başlığı) atıldı`,
     repeatedHeaders: (n: number) => `Her sayfada tekrarlanan ${n} başlık satırı atıldı`,
     wrappedRows: (n: number) => `Alt satıra taşan ${n} hücre metni üstündeki satırla birleştirildi`,
+    ambiguous: (column: string) =>
+      `${column}: “1,250” gibi değerler hem 1,25 hem 1.250 olabilir; yanlış sayı üretmemek için sütun metin olarak bırakıldı. Dosyada ondalık ve binlik ayraçlarını netleştirip tekrar yükleyebilirsin.`,
     unreadable: (column: string, n: number) =>
       `${column}: ${n} değer sayı olarak okunamadığı için sütun metin olarak bırakıldı; bu sütunla toplam veya ortalama hesaplanamaz. Önizlemede kontrol et.`,
     encodings: { "utf-8": "UTF-8", "utf-16le": "UTF-16", "utf-16be": "UTF-16", "windows-1254": "Windows-1254 (Türkçe Excel)" } as Record<string, string>,
@@ -143,9 +153,14 @@ const tr = {
     placeholder: "Bu ay en çok kazandıran ilk 3 ürünü göster",
     submit: "Sor",
     examples: "Örnek sorular",
+    followUps: "Devam soruları",
     computing: "Hesaplanıyor",
     translateFailed: "Soru şu an çevrilemedi, lütfen tekrar dene.",
-    computeFailed: (detail: string) => `Hesaplama sırasında bir sorun oluştu: ${detail}`,
+    computeFailed: "Bu soru hesaplanamadı. Soruyu biraz farklı sözcüklerle tekrar sormayı dene.",
+    timeout: "Yanıt çok uzun sürdü; yapay zekâ şu an yoğun olabilir. Birazdan tekrar dene.",
+    retry: "Tekrar dene",
+    cancel: "Vazgeç",
+    technical: "Teknik ayrıntı",
     notNumbers:
       "Bu hesap, sayı olmayan değerler içeren bir sütuna dayanıyor; yanlış bir sonuç göstermemek için durduruldu. Veri hazırlama raporunda hangi sütun olduğunu görebilirsin.",
     followUp: (question: string) => `Takip sorusu sorabilirsin — önceki: “${question}”`,
@@ -156,6 +171,8 @@ const tr = {
     empty: "Bu soruya uyan kayıt bulunamadı.",
     insight: "İçgörü",
     note: "Not",
+    tableFallback:
+      "Bu sonuç seçilen grafiğe uygun olmadığı için (ör. 30'dan fazla kategori, 8'den fazla seri veya sayısal olmayan değerler) tablo olarak gösteriliyor.",
     exportTitle: "İndir",
     copy: "Tabloyu panoya kopyala",
     copied: "Kopyalandı",
@@ -168,6 +185,9 @@ const tr = {
         : `Yapay zekâya yalnızca sorun ve ${n} sütun adı gitti:`,
     howRan: (rows: string) => `Dönen sorgu, tarayıcında DuckDB ile ${rows} satır üzerinde çalıştı:`,
     listTotal: "Listenin toplamı",
+    sortBy: "sıralamak için tıkla",
+    // File-name suffix when an export stops at the row cap.
+    firstRowsSuffix: (n: number) => `-ilk-${n}`,
     viewGroup: "Görünüm",
     views: { metric: "Özet", bar: "Çubuk", line: "Çizgi", pie: "Pasta", table: "Tablo" } as Record<string, string>,
     page: (n: number, total: number) => `Sayfa ${n}/${total}`,
@@ -184,6 +204,10 @@ const tr = {
     countTop: (dim: string) => `En sık geçen ${dim} hangisi?`,
     countTrend: "Kayıt sayısı aylara göre nasıl değişti?",
     countShare: (dim: string) => `Kayıtlar ${dim} bazında nasıl dağılıyor?`,
+    // After an answer: short follow-ups that rely on the conversation context.
+    followMonthly: "Bunu aylara göre göster",
+    followTop: "Sadece ilk 5'i göster",
+    followBy: (dim: string) => `Bunu ${dim} bazında göster`,
   },
   insight: {
     other: "Diğer",
@@ -193,9 +217,10 @@ const tr = {
       `Sonuç çok büyük; ilk ${n} satır gösteriliyor. Grafik ve toplamlar kısmi veriyle yanlış olacağından gösterilmiyor — soruyu daraltmayı veya gruplamayı dene.`,
     tableTruncated: (n: number) => `Sonuç ${n}'den fazla satır içeriyor; ilk ${n} satır gösteriliyor.`,
     tableRows: (n: string) => `${n} satırlık sonuç bulundu.`,
-    // No "Toplam" prefix when the label already says it ("Toplam Ciro", "Satış Toplamı").
+    // No "Toplam" prefix when the label already says it ("Toplam Ciro", "Satış Toplamı"). The label
+    // is kept as written: lower-casing it would also lower-case names ("İstanbul Cirosu").
     tableTotal: (label: string, rows: string, value: string) =>
-      `${hasTotalWord(label) ? label : `Toplam ${label.toLocaleLowerCase("tr")}`} (listelenen ${rows} satır): ${value}`,
+      `${hasTotalWord(label) ? label : `Toplam ${label}`} (${rows} satır): ${value}`,
     pie: (name: string, share: string, value: string) => `"${name}", ${share} ile en büyük paya sahip (${value}).`,
     pieTotal: (total: string) => ` Toplam: ${total}.`,
     single: (label: string, value: string) => `${label}: ${value}.`,
@@ -250,6 +275,7 @@ const en: Messages = {
   },
   file: {
     unsupported: "Only CSV, Excel and PDF files are supported for now.",
+    sampleFailed: "The sample data couldn't be loaded; check your connection and try again.",
     readFailed: (detail) => `Couldn't read the file: ${detail}`,
     codes: {
       "no-sheet": "No sheet found in the Excel file.",
@@ -273,6 +299,12 @@ const en: Messages = {
     size: (rows, columns) => `${rows} filled rows · ${columns} columns`,
     cancel: "Cancel",
     change: "Change sheet",
+  },
+  session: {
+    offer: (n) => `You asked ${n} question${n === 1 ? "" : "s"} about this file before. Answers are recomputed from your file.`,
+    restore: "Restore",
+    restoring: "Computing…",
+    dismiss: "Ignore",
   },
   history: {
     title: "Earlier answers",
@@ -298,6 +330,8 @@ const en: Messages = {
     pageFurniture: (n) => `${n} page header/footer line${n === 1 ? "" : "s"} (page numbers, report titles) removed`,
     repeatedHeaders: (n) => `${n} header row${n === 1 ? "" : "s"} repeated on each page removed`,
     wrappedRows: (n) => `${n} cell${n === 1 ? "" : "s"} wrapped onto the next line joined with the row above`,
+    ambiguous: (column) =>
+      `${column}: values like “1,250” could mean 1.25 or 1,250, so the column was kept as text rather than guessed. Make the decimal and thousands separators unambiguous in the file and upload it again.`,
     unreadable: (column, n) =>
       `${column}: ${n} value${n === 1 ? "" : "s"} couldn't be read as a number, so the column was kept as text and can't be summed or averaged. Check the preview.`,
     encodings: { "utf-8": "UTF-8", "utf-16le": "UTF-16", "utf-16be": "UTF-16", "windows-1254": "Windows-1254 (Turkish Excel)" },
@@ -330,9 +364,14 @@ const en: Messages = {
     placeholder: "Show the top 3 products by revenue this month",
     submit: "Ask",
     examples: "Example questions",
+    followUps: "Follow-up questions",
     computing: "Computing",
     translateFailed: "Couldn't translate the question right now, please try again.",
-    computeFailed: (detail) => `Something went wrong while computing: ${detail}`,
+    computeFailed: "This question couldn't be computed. Try asking it in slightly different words.",
+    timeout: "The answer took too long; the AI may be busy right now. Try again in a moment.",
+    retry: "Try again",
+    cancel: "Cancel",
+    technical: "Technical details",
     notNumbers:
       "This calculation relies on a column that contains values that aren't numbers, so it was stopped rather than show a wrong result. The data preparation report shows which column.",
     followUp: (question) => `You can ask a follow-up — previous: “${question}”`,
@@ -343,6 +382,8 @@ const en: Messages = {
     empty: "No records match this question.",
     insight: "Insight",
     note: "Note",
+    tableFallback:
+      "This result doesn't fit the chosen chart (e.g. more than 30 categories, more than 8 series or non-numeric values), so it is shown as a table.",
     exportTitle: "Download",
     copy: "Copy table to clipboard",
     copied: "Copied",
@@ -355,6 +396,8 @@ const en: Messages = {
         : `Only your question and ${n} column names were sent to the AI:`,
     howRan: (rows) => `The returned query ran in your browser with DuckDB over ${rows} rows:`,
     listTotal: "List total",
+    sortBy: "click to sort",
+    firstRowsSuffix: (n) => `-first-${n}`,
     viewGroup: "View",
     views: { metric: "Summary", bar: "Bar", line: "Line", pie: "Pie", table: "Table" },
     page: (n, total) => `Page ${n} of ${total}`,
@@ -369,6 +412,9 @@ const en: Messages = {
     countTop: (dim) => `Which ${dim} appears most often?`,
     countTrend: "How did the number of records change month by month?",
     countShare: (dim) => `How are the records split by ${dim}?`,
+    followMonthly: "Show this by month",
+    followTop: "Show only the top 5",
+    followBy: (dim) => `Show this by ${dim}`,
   },
   insight: {
     other: "Other",
@@ -379,7 +425,7 @@ const en: Messages = {
     tableTruncated: (n) => `The result has more than ${n} rows; showing the first ${n}.`,
     tableRows: (n) => `Found ${n} rows.`,
     tableTotal: (label, rows, value) =>
-      `${hasTotalWord(label) ? label : `Total ${label.toLocaleLowerCase("en")}`} (${rows} listed rows): ${value}`,
+      `${hasTotalWord(label) ? label : `Total ${label}`} (${rows} rows): ${value}`,
     pie: (name, share, value) => `"${name}" has the largest share at ${share} (${value}).`,
     pieTotal: (total) => ` Total: ${total}.`,
     single: (label, value) => `${label}: ${value}.`,

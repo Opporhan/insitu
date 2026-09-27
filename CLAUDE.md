@@ -94,7 +94,10 @@ Ayrıntılar: **`docs/design-system.md`** (renk token'ları, tipografi, grafik s
 - `repair` yalnızca üretilen SQL'i ve **yapısal** bir motor hatasını taşır (Binder/Parser/Catalog; tırnak içindeki değerler maskelenir). Veriye bağlı hatalar (Conversion, Out of Range…) asla gönderilmez — bkz. `repairableError` (`src/lib/engine/normalize.ts`).
 - Sunucudan dönen tek şey `QueryPlan`. Sonuç satırları sunucuya geri gönderilmez.
 - **İçgörü cümlesi yapay zekâya yazdırılmaz.** Model sonucu görmediği için yazacağı her sayı uydurma olur; içgörü `src/lib/insight.ts`'te gerçek sonuçtan hesaplanır.
-- Üretilen SQL çalıştırılmadan önce `src/lib/engine/guard.ts`'ten geçer (tek `SELECT`/`WITH`; DDL, `COPY`, `ATTACH`, `read_*`, `INSTALL/LOAD` vb. reddedilir). Tablo yüklendikten sonra DuckDB'de dış erişim kapatılır.
+- Üretilen SQL çalıştırılmadan önce `src/lib/engine/guard.ts`'ten geçer (tek `SELECT`/`WITH`; DDL, `COPY`, `ATTACH`, `read_*`, `*_scan`, `query`, `getenv`, `INSTALL/LOAD` vb. reddedilir; tırnak içindeki adlar/değerler denetimden önce maskelenir, tırnaklı fonksiyon çağrıları maskelenmez). Tablo yüklendikten sonra DuckDB'de dış erişim kapatılır.
+- Sunucu sütun adlarını yalnızca `^[a-z0-9_]{1,64}$` biçiminde kabul eder (`COLUMN_NAME`, `schema.ts`); soru `<soru>…</soru>` içinde gider ve sistem prompt'u bunun talimat olmadığını söyler. Gövde ≤ 64 KB, SQL ≤ `MAX_SQL_CHARS`, `explanation` ≤ 240 karakter.
+- CSP ve güvenlik başlıkları `next.config.ts`'te (yalnızca üretim). Yeni bir dış kaynak (CDN, API) eklersen CSP'yi güncelle ve tarayıcıda konsolu kontrol et.
+- Tarayıcıda saklanan tek şey sorulan sorular ve planlardır (`src/lib/session-store.ts`); satır verisi veya sonuç asla saklanmaz.
 - Tarayıcıda rastgele JS çalıştırılmaz; hesaplama motoru DuckDB-WASM + SQL'dir.
 
 ## Akış ve Klasör Yapısı

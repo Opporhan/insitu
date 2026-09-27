@@ -15,6 +15,7 @@ import { copyTable, downloadCsv, downloadPng } from "@/lib/export"
 import { formatCount } from "@/lib/format"
 import { buildInsight } from "@/lib/insight"
 import { pngPages, viewOptions, type ResultView } from "@/lib/result-view"
+import { readableLabel } from "@/lib/suggestions"
 import type { ChartType, Column, OutputColumn, QueryPlan, ResultRow } from "@/lib/schema"
 import { cn } from "@/lib/utils"
 
@@ -59,8 +60,8 @@ type Props = {
   rowCount: number
 }
 
-function slug(s: string): string {
-  return s.toLocaleLowerCase("tr").replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 48) || "insitu"
+function slug(s: string, locale: string): string {
+  return s.toLocaleLowerCase(locale).replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 48) || "insitu"
 }
 
 export function ResultBento({ answer, columns, rowCount }: Props) {
@@ -73,12 +74,12 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
 
   // Only the views that are correct for this data (see viewOptions) are offered.
   const options = useMemo(
-    () => viewOptions(plan, rows, resultColumns.map((c) => c.key), complete, t.insight.other),
-    [plan, rows, resultColumns, complete, t.insight.other],
+    () => viewOptions(plan, rows, resultColumns.map((c) => c.key), complete, t.insight.other, (k) => readableLabel(k, locale)),
+    [plan, rows, resultColumns, complete, t.insight.other, locale],
   )
   const [viewType, setViewType] = useState<string>(plannedView.kind)
   const view = options.find((o) => o.type === viewType)?.view ?? plannedView
-  const fileName = `insitu-${slug(question)}`
+  const fileName = `insitu-${slug(question, locale)}`
   const [status, setStatus] = useState<"idle" | "exporting" | "copied" | "error">("idle")
   // Charts animate in; exporting before that would capture half-drawn bars and no value labels.
   // (A new answer remounts this component, which resets the flag.)
@@ -124,7 +125,7 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
     // Fetched once and reused, so CSV then copy does not run the full query twice.
     fullRows.current ??= runQuery(plan.sql, MAX_EXPORT_ROWS).then((full) => {
       if (!full.ok) throw new Error(full.error)
-      return { rows: full.rows, suffix: full.complete ? "" : `-ilk-${MAX_EXPORT_ROWS}` }
+      return { rows: full.rows, suffix: full.complete ? "" : t.result.firstRowsSuffix(MAX_EXPORT_ROWS) }
     })
     fullRows.current.catch(() => {
       fullRows.current = null // allow a retry after a failure
@@ -192,6 +193,13 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <p className="text-lg leading-relaxed text-pretty">{insight}</p>
+            {plannedView.kind === "table" && !plannedView.partial && plan.chartType !== "table" && (
+              // The translator asked for a chart but the data doesn't fit one: say so rather than switch silently.
+              <p className="flex gap-1.5 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
+                <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+                <span>{t.result.tableFallback}</span>
+              </p>
+            )}
             {plan.note && (
               // An assumption the translator made (e.g. district instead of province), shown as-is.
               <p className="flex gap-1.5 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">

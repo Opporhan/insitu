@@ -7,6 +7,10 @@ describe("guardSql", () => {
     "SELECT label, value FROM data",
     "WITH a AS (SELECT 1 AS x) SELECT x FROM a;",
     `SELECT "update_date" AS label, 1 AS value FROM data`,
+    // Real column names and values that contain SQL words, semicolons or dashes.
+    `SELECT "export", "import", "set", "load" FROM data`,
+    `SELECT count(*) FROM data WHERE "kategori" = 'Call Center' OR "kod" = 'A--B;C'`,
+    `SELECT "ad" FROM data WHERE "ad" = 'O''Neil'`,
   ])("accepts %s", (sql) => {
     expect(guardSql(sql).ok).toBe(true)
   })
@@ -21,6 +25,13 @@ describe("guardSql", () => {
     "INSTALL httpfs",
     "SET enable_external_access = true",
     "SELECT * FROM glob('*')",
+    `SELECT * FROM "read_csv"('/etc/passwd')`,
+    "SELECT * FROM read_xlsx('x.xlsx')",
+    "SELECT * FROM sqlite_scan('x.db', 't')",
+    "SELECT * FROM query('SELECT 1')",
+    "SELECT getenv('HOME')",
+    "SELECT 'x' FROM data; DROP TABLE data",
+    "SELECT 'unterminated FROM data; DROP TABLE data",
   ])("rejects %s", (sql) => {
     expect(guardSql(sql).ok).toBe(false)
   })
