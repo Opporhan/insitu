@@ -5,16 +5,19 @@ import { FileSpreadsheet, Loader2, ShieldCheck } from "lucide-react"
 import { useI18n } from "@/components/i18n-provider"
 import { Button } from "@/components/ui/button"
 import { ACCEPTED_EXTENSIONS } from "@/lib/engine/load-file"
+import type { PdfProgress } from "@/lib/ingest"
 import { cn } from "@/lib/utils"
 
 type Props = {
   loading: boolean
+  /** Page-by-page progress while a PDF is read (or OCR'd). */
+  progress: PdfProgress | null
   error: string | null
   onFile: (file: File) => void
   onSample: () => void
 }
 
-export function Dropzone({ loading, error, onFile, onSample }: Props) {
+export function Dropzone({ loading, progress, error, onFile, onSample }: Props) {
   const { t } = useI18n()
   const [dragging, setDragging] = useState(false)
 
@@ -55,10 +58,16 @@ export function Dropzone({ loading, error, onFile, onSample }: Props) {
           {loading ? <Loader2 className="size-5 animate-spin" aria-hidden /> : <FileSpreadsheet className="size-5" aria-hidden />}
         </span>
         <span className="flex flex-col gap-1">
-          <span className="text-base font-medium">
-            {loading ? t.dropzone.loading : t.dropzone.drop}
+          <span className="text-base font-medium" aria-live="polite">
+            {!loading
+              ? t.dropzone.drop
+              : progress?.step === "ocr"
+                ? t.dropzone.ocr(progress.page, progress.pages)
+                : progress
+                  ? t.dropzone.readingPdf(progress.page, progress.pages)
+                  : t.dropzone.loading}
           </span>
-          <span className="text-sm text-muted-foreground">{t.dropzone.orClick} · .csv, .xlsx, .xls</span>
+          <span className="text-sm text-muted-foreground">{t.dropzone.orClick} · .csv, .xlsx, .xls, .pdf</span>
         </span>
         <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
           <ShieldCheck className="size-3.5 text-primary" aria-hidden />

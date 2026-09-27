@@ -11,7 +11,7 @@ import { DuckDBInstance } from "@duckdb/node-api"
 import { buildCleanTableSql, decideColumn, profileColumns } from "@/lib/engine/clean"
 import { guardSql } from "@/lib/engine/guard"
 import { ingest } from "@/lib/ingest"
-import { normalizeSql, repairableError } from "@/lib/engine/normalize"
+import { normalizeSql, repairableError, strictNumericCasts } from "@/lib/engine/normalize"
 import { buildInsight } from "@/lib/insight"
 import { resolveView } from "@/lib/result-view"
 import { ResultRow, type Column, type ColumnType, type HistoryTurn, type RepairContext } from "@/lib/schema"
@@ -25,7 +25,7 @@ const db = await DuckDBInstance.create(":memory:")
 const conn = await db.connect()
 // Same pipeline as the browser: ingest (header/cleanup/names) → text table → typed table.
 const fileBytes = readFileSync(csvPath)
-const ingested = ingest(csvPath, fileBytes.buffer.slice(fileBytes.byteOffset, fileBytes.byteOffset + fileBytes.byteLength))
+const ingested = await ingest(csvPath, fileBytes.buffer.slice(fileBytes.byteOffset, fileBytes.byteOffset + fileBytes.byteLength))
 if (ingested.kind !== "table") throw new Error("multi-sheet workbooks: pass a CSV")
 const tidyPath = join(tmpdir(), `insitu-eval-${process.pid}.csv`)
 writeFileSync(tidyPath, ingested.csv)
@@ -45,8 +45,9 @@ const columns: Column[] = (await describe("SELECT * FROM data")).map((c) => ({ n
 
 type Run = { ok: true; rows: ResultRow[]; keys: string[] } | { ok: false; error: string; repairable: string | null }
 async function run(sql: string): Promise<Run> {
-  const guarded = guardSql(sql)
-  if (!guarded.ok) return { ok: false, error: guarded.error, repairable: guarded.error }
+  const checked = guardSql(sql)
+  if (!checked.ok) return { ok: false, error: checked.error, repairable: checked.error }
+  const guarded = { sql: strictNumericCasts(checked.sql) }
   try {
     const cols = await describe(guarded.sql)
     const normalized = normalizeSql(guarded.sql, cols)

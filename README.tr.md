@@ -4,7 +4,7 @@
 
 **Türkçe** · [English](README.md)
 
-**Tablonla konuş.** CSV veya Excel dosyanı bırak, sorunu bir iş arkadaşına sorar gibi yaz; saniyeler içinde sunuma hazır bir grafik ve tek cümlelik bir içgörü al. Verin bu cihazdan hiç çıkmaz.
+**Tablonla konuş.** CSV, Excel veya PDF dosyanı bırak, sorunu bir iş arkadaşına sorar gibi yaz; saniyeler içinde sunuma hazır bir grafik ve tek cümlelik bir içgörü al. Verin bu cihazdan hiç çıkmaz.
 
 ![Insitu demo](docs/demo.gif)
 
@@ -44,6 +44,14 @@ Kurumsal Excel ve CSV dosyaları nadiren temizdir. Insitu yüklemede şunları o
 - Boş ve hayalet satır/sütunları, **TOPLAM / GENEL TOPLAM / TOTAL / AVERAGE** özet satırlarını çıkarma (çift saymayı önler)
 - Kolon adlarını sorgulanabilir yapma (`Tutar (TL) 💰` → `tutar_tl`, tekrar edenler `tutar_tl_1`)
 - Temizlenmiş verinin **ilk 20 satırlık önizlemesi**
+
+## PDF dosyaları (metinli ve taranmış)
+
+PDF'ler **tamamen tarayıcıda** okunur; dosya hiçbir yere yüklenmez, yapay zekâya yine yalnızca sütun adları gider.
+- **Metinli PDF'ler** (programlardan alınan raporlar, ekstreler, faturalar) pdf.js ile okunur. Tablo, yazıların konumlarından yeniden kurulur: çizgili tablolarda hücre çizgileri, çizgisizlerde sütunlar arasındaki boşluklar kullanılır; sağa yaslı sayılar kendi sütununda kalır.
+- Dağınık düzenler desteklenir: tablonun üstündeki rapor başlıkları ve açıklamalar, **sayfa üst/alt bilgileri** ("Sayfa 3 / 10"), **her sayfada tekrarlanan başlık**, **birden çok sayfaya bölünmüş tablo**, **alt satıra taşan hücre metni**, iki satırlı başlıklar, borç/alacak gibi seyrek sütunlar ve aynı belgede birden fazla tablo (Excel sekmeleri gibi seçilir).
+- **Taranmış PDF'ler** tarayıcıda OCR (tesseract.js) ile okunur. İki model paralel çalışır: rakamlar Türkçe+İngilizce modelden, Türkçe harfler ise iki model aynı kelimede uyuşuyorsa yalnızca Türkçe modelden alınır. Motor ve modeller bir kez CDN'den indirilir; sayfa görüntüsü cihazdan çıkmaz. Rapor, motorun emin olamadığı kelime sayısını bildirir.
+- **Sessizce yanlış sayı yok:** Bir sütun yalnızca bütün değerleri okunabiliyorsa sayıya çevrilir. Birkaç değer okunamazsa (hatalı taranmış sayfa) sütun metin kalır, rapor bunu adıyla gösterir ve o sütuna dayanan hesap, değerleri atlamak yerine durdurulur.
 
 Tabloda istenen kavram yoksa en yakın sütun kullanılır ve açıkça not düşülür (ör. "Veride il bulunmadığından ilçe bazlı gruplandı").
 

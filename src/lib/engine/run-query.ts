@@ -3,7 +3,7 @@ import { CHUNK_ROWS, yieldToBrowser } from "@/lib/schedule"
 import { ResultRow } from "@/lib/schema"
 import { currentDb } from "./duckdb"
 import { guardSql } from "./guard"
-import { normalizeSql, repairableError } from "./normalize"
+import { normalizeSql, repairableError, strictNumericCasts } from "./normalize"
 
 /** Rows brought back to the main thread; more than this and the result is marked partial. */
 export const MAX_RESULT_ROWS = 10_000
@@ -19,8 +19,9 @@ const Described = z.array(z.object({ column_name: z.string(), column_type: z.str
 export const MAX_EXPORT_ROWS = 1_000_000
 
 export async function runQuery(sql: string, maxRows = MAX_RESULT_ROWS): Promise<QueryResult> {
-  const guarded = guardSql(sql)
-  if (!guarded.ok) return { ok: false, error: guarded.error, repairable: guarded.error }
+  const checked = guardSql(sql)
+  if (!checked.ok) return { ok: false, error: checked.error, repairable: checked.error }
+  const guarded = { sql: strictNumericCasts(checked.sql) }
 
   const conn = await (await currentDb()).connect()
   try {

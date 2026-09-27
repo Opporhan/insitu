@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { guardSql } from "@/lib/engine/guard"
+import { strictNumericCasts } from "@/lib/engine/normalize"
 
 describe("guardSql", () => {
   it.each([
@@ -22,5 +23,22 @@ describe("guardSql", () => {
     "SELECT * FROM glob('*')",
   ])("rejects %s", (sql) => {
     expect(guardSql(sql).ok).toBe(false)
+  })
+})
+
+describe("strictNumericCasts", () => {
+  it("makes numeric TRY_CASTs inside aggregates strict; leaves listings, dates and strings alone", () => {
+    expect(strictNumericCasts(`SELECT SUM(TRY_CAST("tutar" AS DOUBLE)) FROM data`)).toBe(`SELECT SUM(CAST("tutar" AS DOUBLE)) FROM data`)
+    expect(strictNumericCasts(`SELECT sum(try_cast(replace("t", ',', '.') AS DECIMAL(18, 2))) FROM data`)).toBe(
+      `SELECT sum(CAST(replace("t", ',', '.') AS DECIMAL(18, 2))) FROM data`,
+    )
+    const date = `SELECT strftime(TRY_CAST("tarih" AS DATE), '%Y') AS y FROM data WHERE "ad" = 'TRY_CAST(x AS INT)'`
+    expect(strictNumericCasts(date)).toBe(date)
+    // Listing rows: a NULL shows as "—", nothing is summed, so the cast stays tolerant.
+    const listing = `SELECT "urun", TRY_CAST("adet" AS INTEGER) AS adet FROM data ORDER BY TRY_CAST("adet" AS INTEGER)`
+    expect(strictNumericCasts(listing)).toBe(listing)
+    expect(strictNumericCasts(`SELECT "il", AVG(1.0 * TRY_CAST("adet" AS INTEGER)) FROM data GROUP BY 1`)).toBe(
+      `SELECT "il", AVG(1.0 * CAST("adet" AS INTEGER)) FROM data GROUP BY 1`,
+    )
   })
 })

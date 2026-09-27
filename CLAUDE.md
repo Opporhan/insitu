@@ -16,7 +16,7 @@ Kullanıcı tablosunu bırakır, aklındaki soruyu bir iş arkadaşına sorar gi
 
 ## Sistemin Çalışma Mantığı (Adım Adım)
 
-1. **Veriyi Yerinde Tut:** Kullanıcı CSV veya Excel dosyasını ekrana sürüklediğinde dosya hiçbir sunucuya yüklenmez. Tüm hesaplama tarayıcının kendi belleğinde gerçekleşir.
+1. **Veriyi Yerinde Tut:** Kullanıcı CSV, Excel veya PDF dosyasını ekrana sürüklediğinde dosya hiçbir sunucuya yüklenmez. Tüm hesaplama tarayıcının kendi belleğinde gerçekleşir.
 2. **Soruyu Anla:** Kullanıcı "Bu ay en çok kazandıran ilk 3 ürünü göster" dediğinde; sistem kullanıcının verilerini değil, yalnızca tablonun sütun başlıklarını (örneğin: `urun_adi`, `fiyat`, `tarih`) yapay zekaya iletir.
 3. **Kodu Üret ve İçeride Çalıştır:** Yapay zeka bu başlıklara göre arka planda gerekli hesaplama kodunu yazar. Tarayıcı bu kodu kendi içinde çalıştırarak sonucu milisaniyeler içinde çıkarır.
 4. **Sayı Yığınını Görsele Dönüştür:** Kullanıcıyı kuru rakamlarla boğmak yerine, soruya en uygun grafiği (çubuk, çizgi veya pasta) ekrana çizer.
@@ -28,7 +28,7 @@ Kullanıcı tablosunu bırakır, aklındaki soruyu bir iş arkadaşına sorar gi
 
 - **Veri Sızıntısına Sıfır Tolerans:** Kullanıcının ham satış, müşteri veya finans rakamlarını asla harici yapay zeka servislerine gönderme. Yapay zekaya yalnızca sütun isimleri ve gerekirse 1-2 adet temsili boş format örneği gösterilebilir.
 - **Ajan Kalabalığından Kaçın:** Birbiriyle konuşan 4-5 farklı yapay zeka ajanı kurup sistemi yavaşlatma ve maliyeti artırma. Akış deterministiktir: *Dosyayı Oku ➔ Soruyu Çevir ➔ Kodu Çalıştır ➔ Grafiği Çiz.*
-- **Kapsamı Dağıtma:** İlk sürümde PDF veya fatura fotoğrafı okumaya çalışma; odağımız hatasız ve hızlı çalışan **CSV ve Excel** dosyalarıdır.
+- **Kapsamı Dağıtma:** Odağımız hatasız ve hızlı çalışan **CSV, Excel ve PDF** tablolarıdır. PDF de tamamen tarayıcıda okunur (taranmışsa yerel OCR ile); PDF veya görüntüsü asla yapay zekâya gönderilmez. Fotoğraf/görsel dosyaları kapsam dışıdır.
 - **Gereksiz Karmaşık Tasarım:** Sayfayı yüzlerce ayar düğmesiyle doldurma. Arayüz; bir dosya bırakma alanı, temiz bir arama çubuğu ve ortada parlayan bir grafikten ibaret olmalıdır.
 
 ---
@@ -127,9 +127,10 @@ Tamamı `prepare.worker.ts` içinde çalışır; ana thread'de dosya ayrıştır
 2. `sources.ts`: CSV/TSV PapaParse ile (`,` `;` Tab `|` sezilir). Excel SheetJS ile; tarih hücreleri seri sayıdan ISO'ya (saat dilimsiz). Birden çok dolu sekme varsa `ingest()` sekme listesi döndürür, kullanıcı seçer.
 3. `tidy.ts`: ilk 15 satırda başlık tespiti (geniş + metinsel + benzersiz + ardından veri); üstteki banner satırları atılır; boş satırlar, özet satırları (ilk hücresi tam olarak TOPLAM/GENEL TOPLAM/TOTAL/AVERAGE…), %90'dan fazlası boş satırlar ve **başlıksız** %90+ boş ya da tamamen boş sütunlar kırpılır. Başlığı olan seyrek sütun gerçek veridir, **silinmez**.
 4. Kolon adları `sanitizeName` ile DuckDB-güvenli snake_case (`Tutar (TL) 💰` → `tutar_tl`); boş → `kolon_N`, tekrar → `ad_1`, rakamla başlayan → `kolon_…`.
+PDF (`src/lib/ingest/pdf/`): `extract.ts` pdf.js ile metin konumları + tablo çizgileri (pdf.js ayrı iç worker'da; worker paketi `self`'e kendini bağladığı için prepare worker'ında yüklenmez). Metin katmanı olmayan sayfa `ocr.ts` ile okunur: tesseract.js iki geçiş (rakamlar `tur+eng`, Türkçe harfler `tur`'dan yalnızca katlanmış biçim aynıysa), `SINGLE_BLOCK` (seyrek mod tek haneli sayıları atlar), `rotateAuto`, zaman aşımı → `pdf-ocr-failed`. `layout.ts` saf ve testli: satırlar → sayfa üst/alt bilgisi → tablo bölgeleri → sayfalar arası birleştirme → sütun sınırları (çizgi varsa lattice, yoksa boşluk) → taşan hücre birleştirme. Birden çok tablo sekme gibi seçilir; hepsi tek seferde hazırlanır (seçimde OCR tekrar çalışmaz). Test PDF'leri `src/lib/__tests__/pdf-fixtures.ts` ile üretilir.
 5. Çıktı: RFC 4180 CSV + `IngestReport`. DuckDB bunu **sabit** lehçeyle okur (sezdirme yok). Rapor ve ilk 20 satır arayüzde "Veri hazırlama raporu" panelinde gösterilir; hiçbir değişiklik sessiz olmaz.
 - DuckDB'ye tüm sütunlar `all_varchar` ile yüklenir; `clean.ts` tek profil sorgusuyla biçime karar verir. DuckDB'nin kendi tip tahminine güvenme: Türkçe "1.250" değerini 1,25 okur.
-- Sütun yalnızca **her** değer aynı biçime uyuyorsa dönüştürülür; aksi hâlde metin kalır. Para/ondalık değerler `DECIMAL(38, ölçek)` olarak saklanır (DOUBLE toplamları kuruş kaydırır).
+- Sütun yalnızca **her** değer aynı biçime uyuyorsa dönüştürülür; aksi hâlde metin kalır. Değerlerin ≥%80'i sayıysa `unreadable` ile raporda uyarılır. Çalıştırmadan önce sayısal `TRY_CAST`'ler `strictNumericCasts` ile katı `CAST` olur: metin sütunundaki sayı olmayan değer toplamdan sessizce düşmez, sorgu durur (`t.ask.notNumbers`). Para/ondalık değerler `DECIMAL(38, ölçek)` olarak saklanır (DOUBLE toplamları kuruş kaydırır).
 - Sonuç ana thread'e en fazla `MAX_RESULT_ROWS` (10.000) satır getirilir; fazlası `complete: false` olur ve kısmi veriden grafik/toplam üretilmez.
 
 ### QueryPlan sözleşmesi

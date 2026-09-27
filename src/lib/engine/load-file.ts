@@ -1,9 +1,9 @@
-import { extension, type IngestReport, type SheetInfo } from "@/lib/ingest"
+import { extension, type IngestReport, type PdfProgress, type SheetInfo } from "@/lib/ingest"
 import { ResultRow, type Column, type ColumnType } from "@/lib/schema"
 import { buildCleanTableSql, decideColumn, profileColumns, type CleanKind } from "./clean"
 import { freshDb } from "./duckdb"
 import { normalizeSql } from "./normalize"
-import type { PrepareRequest, PrepareResponse } from "./prepare"
+import type { PrepareRequest, PrepareResponse, PreparedTable } from "./prepare"
 
 export type Dataset = {
   fileName: string
@@ -11,6 +11,8 @@ export type Dataset = {
   columns: Column[]
   /** Columns whose representation the cleaner changed (shown to the user). */
   cleaned: { column: string; kind: CleanKind; currencyStripped: boolean }[]
+  /** Columns that look numeric but contain values that are not numbers; kept as text. */
+  unreadable: { column: string; count: number }[]
   /** What ingestion did to the raw file (header row, removed rows, renamed columns…). */
   report: IngestReport
   /** First rows of the cleaned table, for the data preview. */
@@ -21,7 +23,7 @@ export type LoadResult = { kind: "sheets"; sheets: SheetInfo[] } | { kind: "data
 
 export const PREVIEW_ROWS = 20
 
-export const ACCEPTED_EXTENSIONS = [".csv", ".tsv", ".txt", ".xlsx", ".xls", ".xlsm"] as const
+export const ACCEPTED_EXTENSIONS = [".csv", ".tsv", ".txt", ".xlsx", ".xls", ".xlsm", ".pdf"] as const
 
 const INPUT_FILE = "input.csv"
 
@@ -29,13 +31,22 @@ export function isAccepted(name: string): boolean {
   return (ACCEPTED_EXTENSIONS as readonly string[]).includes(extension(name))
 }
 
-type Prepared = Exclude<PrepareResponse, { ok: false }>
+type Prepared = Exclude<PrepareResponse, { ok: false } | { kind: "progress" }>
+
+/** Tables of a multi-table PDF, prepared once; picking another table does not read (or OCR) the file again. */
+const preparedTables = new WeakMap<File, Record<string, PreparedTable>>()
 
 /** The whole ingestion pipeline runs in a worker so large files never freeze the page. */
-function prepareInWorker(file: File, sheet: string | undefined): Promise<Prepared> {
+function prepareInWorker(file: File, sheet: string | undefined, onProgress: (p: PdfProgress) => void): Promise<Prepared> {
+  const cached = sheet !== undefined ? preparedTables.get(file)?.[sheet] : undefined
+  if (cached) return Promise.resolve({ ok: true, kind: "table", ...cached })
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("./prepare.worker.ts", import.meta.url), { type: "module" })
     worker.onmessage = (e: MessageEvent<PrepareResponse>) => {
+      if (e.data.ok && e.data.kind === "progress") {
+        onProgress(e.data.progress)
+        return
+      }
       worker.terminate()
       if (e.data.ok) resolve(e.data)
       else reject(new Error(e.data.error))
@@ -58,15 +69,19 @@ function toColumnType(duckType: string): ColumnType {
 }
 
 /**
- * Reads a CSV/Excel file into DuckDB table `data`, entirely in the browser. All heavy
+ * Reads a CSV/Excel/PDF file into DuckDB table `data`, entirely in the browser. All heavy
  * work runs in workers (file preparation, DuckDB); the main thread only awaits.
  */
-export async function loadFile(file: File, sheet?: string): Promise<LoadResult> {
-  const prepared = await prepareInWorker(file, sheet)
-  if (prepared.kind === "sheets") return { kind: "sheets", sheets: prepared.sheets }
+export async function loadFile(file: File, sheet?: string, onProgress: (p: PdfProgress) => void = () => {}): Promise<LoadResult> {
+  const prepared = await prepareInWorker(file, sheet, onProgress)
+  if (prepared.kind === "sheets") {
+    if (prepared.tables) preparedTables.set(file, prepared.tables)
+    return { kind: "sheets", sheets: prepared.sheets }
+  }
 
   const db = await freshDb()
-  await db.registerFileBuffer(INPUT_FILE, prepared.bytes)
+  // A copy, so a cached PDF table stays usable when the user picks it again.
+  await db.registerFileBuffer(INPUT_FILE, prepared.bytes.slice())
   const conn = await db.connect()
   try {
     // The worker produced clean RFC 4180 CSV, so the dialect is fixed rather than sniffed.
@@ -111,6 +126,7 @@ export async function loadFile(file: File, sheet?: string): Promise<LoadResult> 
         cleaned: decisions.flatMap((d) =>
           d.converted ? [{ column: d.name, kind: d.kind, currencyStripped: d.currencyStripped }] : [],
         ),
+        unreadable: decisions.flatMap((d) => (d.unreadable > 0 ? [{ column: d.name, count: d.unreadable }] : [])),
         report: prepared.report,
         preview,
       },

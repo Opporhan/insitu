@@ -158,8 +158,18 @@ export type CleanKind =
   | "dmy-date"
   | "mdy-date"
 
-/** `converted` is true when the cleaner changed the representation (worth telling the user). */
-export type ColumnDecision = { name: string; kind: CleanKind; expr: string; converted: boolean; currencyStripped: boolean }
+/**
+ * `converted` is true when the cleaner changed the representation (worth telling the user).
+ * `unreadable` > 0: the column is mostly numbers, but that many values are not, so it stays text.
+ */
+export type ColumnDecision = {
+  name: string
+  kind: CleanKind
+  expr: string
+  converted: boolean
+  currencyStripped: boolean
+  unreadable: number
+}
 
 const CONVERTED: ReadonlySet<CleanKind> = new Set(["tr-number", "us-thousands", "dmy-date", "mdy-date"])
 
@@ -179,12 +189,13 @@ export function decideColumn(name: string, p: ColumnProfile): ColumnDecision {
   const v = valueExpr(name)
   const m = moneyExpr(name)
   const dateType = p.time > 0 ? "TIMESTAMP" : "DATE"
-  const make = (kind: CleanKind, expr: string, stripped = false): ColumnDecision => ({
+  const make = (kind: CleanKind, expr: string, stripped = false, unreadable = 0): ColumnDecision => ({
     name,
     kind,
     expr,
     converted: CONVERTED.has(kind) || stripped,
     currencyStripped: stripped,
+    unreadable,
   })
   const stripped = p.stripped > 0
 
@@ -207,7 +218,10 @@ export function decideColumn(name: string, p: ColumnProfile): ColumnDecision {
   if (p.int + p.usk + p.dot === p.n && p.usk > 0) {
     return make("us-thousands", `TRY_CAST(replace(${m}, ',', '') AS ${numericType(p.fracDot)})`, stripped)
   }
-  return make("text", v)
+  // Mostly numbers, but a few values are not (a typo, a misread scan): the column stays text and
+  // the user is told how many values block it. Values are never guessed.
+  const numeric = Math.max(p.int + p.dot, p.int + p.tr, p.int + p.usk + p.dot)
+  return make("text", v, false, p.n >= 5 && numeric >= 0.8 * p.n ? p.n - numeric : 0)
 }
 
 export function buildCleanTableSql(target: string, source: string, decisions: readonly ColumnDecision[]): string {

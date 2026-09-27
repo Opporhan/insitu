@@ -13,9 +13,32 @@ function clean(value: string): Cell {
   return s === "" ? null : s
 }
 
+/**
+ * The delimiter under which the first lines (header included) split into the same number of
+ * fields most often, with at least two fields. Papa's own guess can pick "," for Turkish
+ * exports like "ilce;tutar / Kadıköy;12,50", where every value has a decimal comma.
+ */
+function sniffDelimiter(text: string): string | null {
+  const sample = text.split(/\r?\n/).filter((l) => l.trim() !== "").slice(0, 50).join("\n")
+  let best: { delimiter: string; agreeing: number; fields: number } | null = null
+  for (const delimiter of DELIMITERS) {
+    const counts = Papa.parse<string[]>(sample, { delimiter }).data.map((r) => r.length)
+    const tally = new Map<number, number>()
+    for (const c of counts) tally.set(c, (tally.get(c) ?? 0) + 1)
+    const [fields, agreeing] = [...tally].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] ?? [0, 0]
+    if (fields < 2) continue
+    if (!best || agreeing > best.agreeing || (agreeing === best.agreeing && fields > best.fields)) best = { delimiter, agreeing, fields }
+  }
+  return best?.delimiter ?? null
+}
+
 /** CSV/TSV text → cells. The delimiter is sniffed from `,` `;` tab `|` by field-count consistency. */
 export function parseDelimited(text: string): { rows: Matrix; delimiter: string } {
-  const result = Papa.parse<string[]>(text, { delimitersToGuess: [...DELIMITERS], skipEmptyLines: false })
+  const sniffed = sniffDelimiter(text)
+  const result = Papa.parse<string[]>(text, {
+    ...(sniffed ? { delimiter: sniffed } : { delimitersToGuess: [...DELIMITERS] }),
+    skipEmptyLines: false,
+  })
   return { rows: result.data.map((r) => r.map((v) => clean(String(v ?? "")))), delimiter: result.meta.delimiter }
 }
 
@@ -55,7 +78,8 @@ export function sheetMatrix(workbook: WorkBook, name: string): Matrix {
   return Array.from(rows, (row) => Array.from(row ?? [], (c) => excelCell(c)))
 }
 
-export type SheetInfo = { name: string; rows: number; columns: number }
+/** A sheet of a workbook, or a table found in a PDF (then `pages` is its page range). */
+export type SheetInfo = { name: string; rows: number; columns: number; pages?: [number, number] }
 
 /** Sheets that contain any value, with their filled size. */
 export function listSheets(workbook: WorkBook): SheetInfo[] {

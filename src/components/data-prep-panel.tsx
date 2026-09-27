@@ -1,6 +1,6 @@
 "use client"
 
-import { ChevronDown, ClipboardCheck } from "lucide-react"
+import { ChevronDown, ClipboardCheck, TriangleAlert } from "lucide-react"
 import { useI18n } from "@/components/i18n-provider"
 import { TableView } from "@/components/table-view"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -21,12 +21,20 @@ export function DataPrepPanel({ dataset, open, onOpenChange }: Props) {
   const p = t.prep
 
   const lines: string[] = []
+  const pdf = r.pdf
   lines.push(
-    r.source === "excel"
-      ? p.excelSource(r.sheet ?? "")
-      : p.csvSource(p.encodings[r.encoding ?? ""] ?? r.encoding ?? "", p.delimiters[r.delimiter ?? ""] ?? r.delimiter ?? ""),
+    pdf
+      ? p.pdfSource(pdf.pages, pdf.tablePages[0], pdf.tablePages[1])
+      : r.source === "excel"
+        ? p.excelSource(r.sheet ?? "")
+        : p.csvSource(p.encodings[r.encoding ?? ""] ?? r.encoding ?? "", p.delimiters[r.delimiter ?? ""] ?? r.delimiter ?? ""),
   )
+  if (pdf && pdf.ocrPages > 0) lines.push(p.ocrPages(pdf.ocrPages))
+  if (pdf && pdf.skippedOcrPages > 0) lines.push(p.ocrSkipped(pdf.skippedOcrPages))
+  if (pdf && pdf.droppedPageFurniture > 0) lines.push(p.pageFurniture(pdf.droppedPageFurniture))
   lines.push(r.headerRow > 0 ? p.header(r.headerRow) : p.noHeader)
+  if (r.droppedRepeatedHeaders > 0) lines.push(p.repeatedHeaders(r.droppedRepeatedHeaders))
+  if (pdf && pdf.mergedWrappedRows > 0) lines.push(p.wrappedRows(pdf.mergedWrappedRows))
   if (r.skippedTopRows > 0) lines.push(p.skipped(r.skippedTopRows))
   if (r.droppedEmptyRows > 0) lines.push(p.emptyRows(r.droppedEmptyRows))
   if (r.droppedEmptyColumns > 0) lines.push(p.emptyColumns(r.droppedEmptyColumns))
@@ -37,7 +45,13 @@ export function DataPrepPanel({ dataset, open, onOpenChange }: Props) {
     const kind = (t.dataset.cleanNotes as Partial<Record<string, string>>)[c.kind]
     return `${c.column}: ${[kind, c.currencyStripped ? t.dataset.currencyStripped : null].filter(Boolean).join("; ")}`
   })
-  const structural = r.skippedTopRows + r.droppedEmptyRows + r.droppedEmptyColumns + r.droppedTotalRows.length
+  const structural =
+    r.skippedTopRows +
+    r.droppedEmptyRows +
+    r.droppedEmptyColumns +
+    r.droppedTotalRows.length +
+    r.droppedRepeatedHeaders +
+    (pdf ? pdf.droppedPageFurniture + pdf.mergedWrappedRows + pdf.ocrPages : 0)
 
   const columns: OutputColumn[] = dataset.columns.map((c) => ({ key: c.name, label: c.name, format: FORMAT[c.type] ?? "text", total: false }))
   const preview: Extract<ResultView, { kind: "table" }> = {
@@ -68,6 +82,18 @@ export function DataPrepPanel({ dataset, open, onOpenChange }: Props) {
               ))}
               {structural === 0 && <li>{p.clean}</li>}
               <li className="text-foreground">{p.result(formatCount(dataset.rowCount, locale), dataset.columns.length)}</li>
+              {dataset.unreadable.map((u) => (
+                <li key={u.column} className="inline-flex items-start gap-1.5 text-foreground marker:text-transparent">
+                  <TriangleAlert className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+                  {p.unreadable(u.column, u.count)}
+                </li>
+              ))}
+              {pdf && pdf.ocrPages > 0 && (
+                <li className="inline-flex items-start gap-1.5 text-foreground marker:text-transparent">
+                  <TriangleAlert className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+                  {p.ocrWarning(pdf.lowConfidenceWords)}
+                </li>
+              )}
             </ul>
             {renamed.length > 0 && (
               <div className="flex flex-col gap-1.5">

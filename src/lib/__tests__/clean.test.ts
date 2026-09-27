@@ -35,6 +35,21 @@ describe("load-time cleaning (real DuckDB)", () => {
     expect(data.map((r) => r["tutar"])).toEqual([1250.5, 999.99, 12345678, -1000.5, 0.75, 42])
   })
 
+  it("keeps a mostly-numeric column with an unreadable value as text and counts the blockers", async () => {
+    const names = ["tutar"]
+    await conn.run(
+      `CREATE OR REPLACE TABLE raw AS SELECT * FROM (VALUES ('12,50'), ('1.015,85'), ('12:175)50'), ('90,20'), ('5.129,50'), ('6')) t(tutar)`,
+    )
+    const [profile] = await profileColumns(async (sql) => (await rows(sql))[0] ?? {}, "raw", names)
+    const d = decideColumn("tutar", profile!)
+    expect(d.kind).toBe("text")
+    expect(d.unreadable).toBe(1)
+    // Plain text columns are not flagged.
+    await conn.run(`CREATE OR REPLACE TABLE raw AS SELECT * FROM (VALUES ('Kadıköy'), ('Beşiktaş'), ('3'), ('Şişli'), ('Bornova')) t(ilce)`)
+    const [text] = await profileColumns(async (sql) => (await rows(sql))[0] ?? {}, "raw", ["ilce"])
+    expect(decideColumn("ilce", text!).unreadable).toBe(0)
+  })
+
   it("treats an all-'1.250' column as Turkish thousands, not 1.25", async () => {
     const { kinds, data } = await clean({ fiyat: ["1.250", "2.500", "12.000"] })
     expect(kinds["fiyat"]).toBe("tr-number")

@@ -15,6 +15,63 @@ function castExpr(column: DescribedColumn): string {
   return `CAST(${c} AS VARCHAR)`
 }
 
+const NUMERIC_TARGET =
+  /\bAS\s+(TINYINT|SMALLINT|INTEGER|INT|BIGINT|HUGEINT|UTINYINT|USMALLINT|UINTEGER|UBIGINT|UHUGEINT|FLOAT|REAL|DOUBLE|DECIMAL|NUMERIC)(\s*\(\s*\d+\s*(,\s*\d+\s*)?\))?\s*$/i
+
+/** Aggregates whose result silently changes when some inputs become NULL. */
+const AGGREGATES = new Set([
+  "sum", "avg", "mean", "min", "max", "median", "mode", "product", "fsum", "sumkahan", "kahan_sum", "favg",
+  "stddev", "stddev_pop", "stddev_samp", "variance", "var_pop", "var_samp", "quantile", "quantile_cont",
+  "quantile_disc", "arg_max", "arg_min", "max_by", "min_by", "string_agg", "list", "count",
+])
+
+/**
+ * `TRY_CAST(x AS <number>)` turns values that are not numbers into NULL, so a sum over a text
+ * column silently skips them and shows a wrong total. Inside an aggregate, numeric casts are
+ * made strict: such a value now fails the query instead. Elsewhere (listing rows) the NULL shows
+ * as "—", which is honest. Date casts and string literals are left as they are.
+ */
+export function strictNumericCasts(sql: string): string {
+  const head = /^TRY_CAST\s*\(/i
+  // Function name (lower case) for every open parenthesis, "" for plain grouping.
+  const open: string[] = []
+  let out = ""
+  let quote: string | null = null
+  for (let i = 0; i < sql.length; i++) {
+    const c = sql[i] ?? ""
+    if (quote) {
+      if (c === quote) quote = null
+    } else if (c === "'" || c === '"') quote = c
+    else if (c === "(") open.push(/([a-z_][\w$]*)\s*$/i.exec(sql.slice(Math.max(0, i - 40), i))?.[1]?.toLowerCase() ?? "")
+    else if (c === ")") open.pop()
+    else if (!/[\w$]/.test(sql[i - 1] ?? "") && open.some((f) => AGGREGATES.has(f))) {
+      const m = head.exec(sql.slice(i, i + 20))
+      if (m) {
+        // Find the matching ")" (quotes and nested parentheses skipped).
+        let depth = 1
+        let inQuote: string | null = null
+        let j = i + m[0].length
+        for (; j < sql.length && depth > 0; j++) {
+          const d = sql[j]
+          if (inQuote) {
+            if (d === inQuote) inQuote = null
+          } else if (d === "'" || d === '"') inQuote = d
+          else if (d === "(") depth++
+          else if (d === ")") depth--
+        }
+        if (depth === 0 && NUMERIC_TARGET.test(sql.slice(i + m[0].length, j - 1))) {
+          out += "CAST("
+          open.push("cast")
+          i += m[0].length - 1
+          continue
+        }
+      }
+    }
+    out += c
+  }
+  return out
+}
+
 export type NormalizeResult = { ok: true; sql: string } | { ok: false; error: string }
 
 /**

@@ -14,7 +14,7 @@ import { isAccepted, loadFile, type Dataset } from "@/lib/engine/load-file"
 import { prewarmDb } from "@/lib/engine/duckdb"
 import { runQuery } from "@/lib/engine/run-query"
 import { formatCount } from "@/lib/format"
-import type { SheetInfo } from "@/lib/ingest"
+import type { PdfProgress, SheetInfo } from "@/lib/ingest"
 import { resolveColumns, resolveView } from "@/lib/result-view"
 import { MAX_HISTORY, TranslateResponse, type HistoryTurn, type RepairContext, type TranslateRequest } from "@/lib/schema"
 import { suggestQuestions } from "@/lib/suggestions"
@@ -31,6 +31,7 @@ export function InsituApp() {
   const { t, locale } = useI18n()
   const [dataset, setDataset] = useState<Dataset | null>(null)
   const [fileLoading, setFileLoading] = useState(false)
+  const [progress, setProgress] = useState<PdfProgress | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [state, setState] = useState<AnswerState>({ kind: "idle" })
   // Every answer of this file's session stays available; one is shown in full.
@@ -55,8 +56,9 @@ export function InsituApp() {
     }
     setFileLoading(true)
     setFileError(null)
+    setProgress(null)
     try {
-      const loaded = await loadFile(file, sheet)
+      const loaded = await loadFile(file, sheet, setProgress)
       if (loaded.kind === "sheets") {
         setSheetChoice({ file, sheets: loaded.sheets })
         return
@@ -74,6 +76,7 @@ export function InsituApp() {
       setFileError(t.file.readFailed(t.file.codes[detail] ?? detail))
     } finally {
       setFileLoading(false)
+      setProgress(null)
     }
   }
 
@@ -127,7 +130,8 @@ export function InsituApp() {
         }
         setState({
           kind: "error",
-          message: t.ask.computeFailed(result.error),
+          // A value that is not a number (strict casts, see strictNumericCasts) stops the query.
+          message: /^Conversion Error/i.test(result.error) ? t.ask.notNumbers : t.ask.computeFailed(result.error),
           suggestions: [],
         })
         return
@@ -174,7 +178,7 @@ export function InsituApp() {
           <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">{t.hero.title}</h1>
           <p className="mx-auto max-w-[60ch] text-base text-pretty text-muted-foreground">{t.hero.body}</p>
         </div>
-        <Dropzone loading={fileLoading} error={fileError} onFile={(file) => void openFile(file)} onSample={openSample} />
+        <Dropzone loading={fileLoading} progress={progress} error={fileError} onFile={(file) => void openFile(file)} onSample={openSample} />
       </div>
     )
   }
@@ -226,7 +230,9 @@ export function InsituApp() {
             disabled={busy || fileLoading}
             onClick={() => setSheetChoice({ file: sourceFile, sheets: dataset.report.sheets })}
           >
-            {dataset.report.sheet} · {t.sheets.change}
+            {dataset.report.pdf
+              ? `${t.sheets.pdfTable(dataset.report.sheet ?? "", dataset.report.pdf.tablePages)} · ${t.sheets.pdfChange}`
+              : `${dataset.report.sheet} · ${t.sheets.change}`}
           </Button>
         )}
         <Button

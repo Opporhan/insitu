@@ -14,6 +14,8 @@ export type TidyReport = {
   droppedEmptyColumns: number
   /** First-cell labels of removed summary rows ("TOPLAM", "Genel Toplam"…). */
   droppedTotalRows: string[]
+  /** Copies of the header row inside the data (a table printed over several pages). */
+  droppedRepeatedHeaders: number
   renamedColumns: { from: string; to: string }[]
   rowCount: number
   columnCount: number
@@ -140,6 +142,12 @@ export function tidyMatrix(input: Matrix): TidyTable {
     return label === null
   })
 
+  // 2b. Repeated header rows (every page of a printed report starts with the header again).
+  const headerKey = headerIndex >= 0 ? headerCells.map((c) => (c === null ? "" : fold(c))).join("\u0000") : null
+  let droppedRepeatedHeaders = rows.length
+  rows = rows.filter((r) => headerKey === null || r.map((c) => (c === null ? "" : fold(c))).join("\u0000") !== headerKey)
+  droppedRepeatedHeaders -= rows.length
+
   // 3. Ghost columns: fully empty, or unnamed and more than 90% empty. A named but sparse
   //    column (e.g. "İade Nedeni") is real data and is kept.
   const keep = headerCells.map((h, c) => {
@@ -168,6 +176,7 @@ export function tidyMatrix(input: Matrix): TidyTable {
       droppedEmptyRows,
       droppedEmptyColumns,
       droppedTotalRows,
+      droppedRepeatedHeaders,
       renamedColumns: headerIndex >= 0 ? renamed : [],
       rowCount: rows.length,
       columnCount: names.length,

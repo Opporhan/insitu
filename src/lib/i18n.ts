@@ -37,7 +37,7 @@ const tr = {
   languageName: "Türkçe",
   meta: {
     title: "Insitu — Tablonla konuş",
-    description: "CSV ve Excel tablolarına günlük dille soru sor. Hesaplama tarayıcında yapılır, verin cihazından çıkmaz.",
+    description: "CSV, Excel ve PDF tablolarına günlük dille soru sor. Hesaplama tarayıcında yapılır, verin cihazından çıkmaz.",
   },
   header: {
     privacy: "Veri cihazında kalır",
@@ -50,22 +50,37 @@ const tr = {
   },
   dropzone: {
     loading: "Tablon tarayıcında okunuyor…",
-    drop: "CSV veya Excel dosyanı buraya bırak",
+    readingPdf: (page: number, pages: number) => `PDF okunuyor: sayfa ${page}/${pages}`,
+    ocr: (page: number, pages: number) =>
+      `Taranmış sayfa metin tanımayla okunuyor: ${page}/${pages}${page === 1 ? " (ilk seferde tanıma modeli indirilir)" : ""}`,
+    drop: "CSV, Excel veya PDF dosyanı buraya bırak",
     orClick: "ya da seçmek için tıkla",
     privacy: "Dosya hiçbir sunucuya yüklenmez",
     sample: "Örnek satış verisiyle dene",
   },
   file: {
-    unsupported: "Şimdilik yalnızca CSV ve Excel dosyaları destekleniyor.",
+    unsupported: "Şimdilik yalnızca CSV, Excel ve PDF dosyaları destekleniyor.",
     readFailed: (detail: string) => `Dosya okunamadı: ${detail}`,
     codes: {
       "no-sheet": "Excel dosyasında sayfa bulunamadı.",
       "no-columns": "Dosyada sütun bulunamadı.",
+      "pdf-no-table": "PDF'te tablo bulunamadı. Satır ve sütunlardan oluşan bir tablo içeren bir PDF dene.",
+      "pdf-password": "PDF parola korumalı. Parolasız bir kopyasını yükle.",
+      "pdf-invalid": "PDF açılamadı; dosya bozuk olabilir.",
+      "pdf-scanned": "PDF taranmış görüntülerden oluşuyor ve bu tarayıcı metin tanımayı desteklemiyor.",
+      "pdf-render": "Taranmış sayfa görüntüye çevrilemedi.",
+      "pdf-ocr-failed": "Metin tanıma tamamlanamadı; internet bağlantını kontrol edip tekrar dene (tanıma modeli ilk seferde indirilir).",
+      "engine-timeout": "Hesaplama motoru yüklenemedi; internet bağlantını kontrol edip tekrar dene.",
     } as Record<string, string>,
   },
   sheets: {
     title: "Hangi sekmeyi analiz edelim?",
     body: (file: string) => `“${file}” dosyasında veri içeren birden fazla sekme var.`,
+    pdfTitle: "Hangi tabloyu analiz edelim?",
+    pdfBody: (file: string) => `“${file}” içinde birden fazla tablo bulundu.`,
+    pdfTable: (name: string, pages: [number, number]) =>
+      `Tablo ${name} · ${pages[0] === pages[1] ? `sayfa ${pages[0]}` : `sayfa ${pages[0]}–${pages[1]}`}`,
+    pdfChange: "Tablo değiştir",
     size: (rows: string, columns: number) => `${rows} dolu satır · ${columns} sütun`,
     cancel: "Vazgeç",
     change: "Sekme değiştir",
@@ -80,6 +95,19 @@ const tr = {
     previewTitle: (n: number) => `Temizlenmiş verinin ilk ${n} satırı`,
     csvSource: (encoding: string, delimiter: string) => `CSV · ${encoding} kodlama · ayraç: ${delimiter}`,
     excelSource: (sheet: string) => `Excel · “${sheet}” sekmesi`,
+    pdfSource: (pages: number, from: number, to: number) =>
+      `PDF · ${pages} sayfa · tablo ${from === to ? `${from}. sayfada` : `${from}–${to}. sayfalarda`}`,
+    ocrPages: (n: number) => `${n} taranmış sayfa tarayıcıda metin tanıma (OCR) ile okundu`,
+    ocrWarning: (n: number) =>
+      n > 0
+        ? `Metin tanıma ${n} kelimeden emin olamadı; önizlemedeki değerleri orijinal PDF ile karşılaştır`
+        : "Metin tanıma sonuçlarını önizlemede orijinal PDF ile karşılaştır",
+    ocrSkipped: (n: number) => `${n} taranmış sayfa sınırı aştığı için okunmadı`,
+    pageFurniture: (n: number) => `${n} sayfa üst/alt bilgisi satırı (sayfa numarası, rapor başlığı) atıldı`,
+    repeatedHeaders: (n: number) => `Her sayfada tekrarlanan ${n} başlık satırı atıldı`,
+    wrappedRows: (n: number) => `Alt satıra taşan ${n} hücre metni üstündeki satırla birleştirildi`,
+    unreadable: (column: string, n: number) =>
+      `${column}: ${n} değer sayı olarak okunamadığı için sütun metin olarak bırakıldı; bu sütunla toplam veya ortalama hesaplanamaz. Önizlemede kontrol et.`,
     encodings: { "utf-8": "UTF-8", "utf-16le": "UTF-16", "utf-16be": "UTF-16", "windows-1254": "Windows-1254 (Türkçe Excel)" } as Record<string, string>,
     delimiters: { ",": "virgül (,)", ";": "noktalı virgül (;)", "\t": "sekme (Tab)", "|": "dikey çizgi (|)" } as Record<string, string>,
     header: (row: number) => `Başlık satırı otomatik bulundu: ${row}. satır`,
@@ -113,6 +141,8 @@ const tr = {
     computing: "Hesaplanıyor",
     translateFailed: "Soru şu an çevrilemedi, lütfen tekrar dene.",
     computeFailed: (detail: string) => `Hesaplama sırasında bir sorun oluştu: ${detail}`,
+    notNumbers:
+      "Bu hesap, sayı olmayan değerler içeren bir sütuna dayanıyor; yanlış bir sonuç göstermemek için durduruldu. Veri hazırlama raporunda hangi sütun olduğunu görebilirsin.",
     followUp: (question: string) => `Takip sorusu sorabilirsin — önceki: “${question}”`,
     newTopic: "Yeni konu",
   },
@@ -192,7 +222,7 @@ const en: Messages = {
   languageName: "English",
   meta: {
     title: "Insitu — Talk to your table",
-    description: "Ask your CSV and Excel files questions in plain language. Everything runs in your browser; your data never leaves your device.",
+    description: "Ask your CSV, Excel and PDF files questions in plain language. Everything runs in your browser; your data never leaves your device.",
   },
   header: {
     privacy: "Data stays on your device",
@@ -205,22 +235,35 @@ const en: Messages = {
   },
   dropzone: {
     loading: "Reading your table in the browser…",
-    drop: "Drop your CSV or Excel file here",
+    readingPdf: (page, pages) => `Reading PDF: page ${page}/${pages}`,
+    ocr: (page, pages) => `Reading scanned page with text recognition: ${page}/${pages}${page === 1 ? " (the recognition model downloads the first time)" : ""}`,
+    drop: "Drop your CSV, Excel or PDF file here",
     orClick: "or click to choose",
     privacy: "Your file is never uploaded to a server",
     sample: "Try it with sample sales data",
   },
   file: {
-    unsupported: "Only CSV and Excel files are supported for now.",
+    unsupported: "Only CSV, Excel and PDF files are supported for now.",
     readFailed: (detail) => `Couldn't read the file: ${detail}`,
     codes: {
       "no-sheet": "No sheet found in the Excel file.",
       "no-columns": "No columns found in the file.",
+      "pdf-no-table": "No table found in the PDF. Try a PDF that contains a table of rows and columns.",
+      "pdf-password": "The PDF is password-protected. Upload a copy without a password.",
+      "pdf-invalid": "The PDF couldn't be opened; the file may be damaged.",
+      "pdf-scanned": "The PDF consists of scanned images and this browser doesn't support text recognition.",
+      "pdf-render": "A scanned page couldn't be turned into an image.",
+      "pdf-ocr-failed": "Text recognition couldn't finish; check your connection and try again (the recognition model downloads the first time).",
+      "engine-timeout": "The calculation engine couldn't load; check your connection and try again.",
     },
   },
   sheets: {
     title: "Which sheet should we analyze?",
     body: (file) => `“${file}” has more than one sheet with data.`,
+    pdfTitle: "Which table should we analyze?",
+    pdfBody: (file) => `More than one table was found in “${file}”.`,
+    pdfTable: (name, pages) => `Table ${name} · ${pages[0] === pages[1] ? `page ${pages[0]}` : `pages ${pages[0]}–${pages[1]}`}`,
+    pdfChange: "Change table",
     size: (rows, columns) => `${rows} filled rows · ${columns} columns`,
     cancel: "Cancel",
     change: "Change sheet",
@@ -235,6 +278,18 @@ const en: Messages = {
     previewTitle: (n) => `First ${n} rows of the cleaned data`,
     csvSource: (encoding, delimiter) => `CSV · ${encoding} encoding · delimiter: ${delimiter}`,
     excelSource: (sheet) => `Excel · sheet “${sheet}”`,
+    pdfSource: (pages, from, to) => `PDF · ${pages} page${pages === 1 ? "" : "s"} · table on ${from === to ? `page ${from}` : `pages ${from}–${to}`}`,
+    ocrPages: (n) => `${n} scanned page${n === 1 ? "" : "s"} read in the browser with text recognition (OCR)`,
+    ocrWarning: (n) =>
+      n > 0
+        ? `Text recognition was unsure about ${n} word${n === 1 ? "" : "s"}; compare the preview with the original PDF`
+        : "Compare the text recognition results in the preview with the original PDF",
+    ocrSkipped: (n) => `${n} scanned page${n === 1 ? "" : "s"} over the limit ${n === 1 ? "was" : "were"} not read`,
+    pageFurniture: (n) => `${n} page header/footer line${n === 1 ? "" : "s"} (page numbers, report titles) removed`,
+    repeatedHeaders: (n) => `${n} header row${n === 1 ? "" : "s"} repeated on each page removed`,
+    wrappedRows: (n) => `${n} cell${n === 1 ? "" : "s"} wrapped onto the next line joined with the row above`,
+    unreadable: (column, n) =>
+      `${column}: ${n} value${n === 1 ? "" : "s"} couldn't be read as a number, so the column was kept as text and can't be summed or averaged. Check the preview.`,
     encodings: { "utf-8": "UTF-8", "utf-16le": "UTF-16", "utf-16be": "UTF-16", "windows-1254": "Windows-1254 (Turkish Excel)" },
     delimiters: { ",": "comma (,)", ";": "semicolon (;)", "\t": "tab", "|": "pipe (|)" },
     header: (row) => `Header row detected automatically: row ${row}`,
@@ -268,6 +323,8 @@ const en: Messages = {
     computing: "Computing",
     translateFailed: "Couldn't translate the question right now, please try again.",
     computeFailed: (detail) => `Something went wrong while computing: ${detail}`,
+    notNumbers:
+      "This calculation relies on a column that contains values that aren't numbers, so it was stopped rather than show a wrong result. The data preparation report shows which column.",
     followUp: (question) => `You can ask a follow-up — previous: “${question}”`,
     newTopic: "New topic",
   },

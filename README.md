@@ -4,7 +4,7 @@
 
 [Türkçe](README.tr.md) · **English**
 
-**Talk to your table.** Drop a CSV or Excel file, ask the way you'd ask a colleague, and get a presentation-ready chart plus a one-sentence insight in seconds. Your data never leaves your device.
+**Talk to your table.** Drop a CSV, Excel or PDF file, ask the way you'd ask a colleague, and get a presentation-ready chart plus a one-sentence insight in seconds. Your data never leaves your device.
 
 ![Insitu demo](docs/demo.gif)
 
@@ -44,6 +44,14 @@ Corporate Excel and CSV files are rarely clean. On upload Insitu automatically d
 - Removal of empty and ghost rows/columns and **TOTAL / GRAND TOTAL / AVERAGE** summary rows (no double counting)
 - Queryable column names (`Tutar (TL) 💰` → `tutar_tl`, duplicates `tutar_tl_1`)
 - A **20-row preview** of the cleaned data
+
+## PDF files (text and scanned)
+
+PDFs are read **entirely in the browser**; the file is never uploaded and the AI still only sees column names.
+- **Text PDFs** (reports, statements, invoices exported from software) are read with pdf.js. Tables are rebuilt from text positions: cell borders when the table is ruled, whitespace between columns otherwise; right-aligned numbers stay in their column.
+- Messy layouts are handled: report titles and notes above the table, **page headers/footers** ("Page 3 / 10"), the **header repeated on every page**, a table **split over several pages**, **cell text wrapped onto a second line**, two-line headers, sparse debit/credit columns and several tables in one document (you pick one, like Excel sheets).
+- **Scanned PDFs** are read with in-browser OCR (tesseract.js). Two models run in parallel: digits come from the Turkish+English model, Turkish letters from the Turkish model only when both agree on the word. The engine and models are downloaded once from a CDN; the page image never leaves the device. The report warns how many words the engine was unsure about.
+- **No silent wrong numbers:** a column is converted to numbers only if every value parses. If a few values can't be read (a misread scan), the column stays text, the report names it, and a calculation that needs it is stopped instead of skipping values.
 
 When a requested concept isn't in the table, the closest column is used and a note says so (e.g. "grouped by district: no province column").
 
