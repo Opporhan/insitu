@@ -174,3 +174,57 @@ describe("pngPages", () => {
     pages.slice(1).forEach(([a], i) => expect(a).toBe(pages[i]?.[1]))
   })
 })
+
+describe("viewOptions", () => {
+  const cols = (x: "text" | "month", total: boolean) => [
+    { key: "k", label: "K", format: x, total: false },
+    { key: "v", label: "V", format: "currency" as const, total },
+  ]
+  const types = async (p: QueryPlan, rows: ResultRow[], complete = true) => {
+    const { viewOptions } = await import("@/lib/result-view")
+    const opts = viewOptions(p, rows, Object.keys(rows[0] ?? {}), complete)
+    // Every option must really render as its type (no silent table fallback).
+    for (const o of opts) expect(o.view.kind).toBe(o.type)
+    return opts.map((o) => o.type)
+  }
+  const cats = [{ k: "İstanbul", v: 5 }, { k: "Ankara", v: 3 }]
+  const months = [{ k: "2026-01", v: 5 }, { k: "2026-02", v: 3 }]
+
+  it("summable categories: bar, pie, table (no line for categories)", async () => {
+    expect(await types(plan({ columns: cols("text", true) }), cats)).toEqual(["bar", "pie", "table"])
+  })
+
+  it("averages/prices never get a pie", async () => {
+    expect(await types(plan({ columns: cols("text", false) }), cats)).toEqual(["bar", "table"])
+  })
+
+  it("months: bar, line, pie (when summable), table", async () => {
+    expect(await types(plan({ chartType: "line", columns: cols("month", true) }), months)).toEqual(["bar", "line", "pie", "table"])
+    expect(await types(plan({ chartType: "line", columns: cols("month", false) }), months)).toEqual(["bar", "line", "table"])
+  })
+
+  it("metric: metric and table only", async () => {
+    const p = plan({ chartType: "metric", xAxisKey: "", yAxisKey: "", columns: [{ key: "t", label: "T", format: "currency", total: true }] })
+    expect(await types(p, [{ t: 10 }])).toEqual(["metric", "table"])
+  })
+
+  it("a cut-off result offers only the table", async () => {
+    expect(await types(plan({ columns: cols("text", true) }), cats, false)).toEqual(["table"])
+  })
+
+  it("multi-series results are not offered as a pie", async () => {
+    const p = plan({
+      chartType: "line",
+      xAxisKey: "m",
+      yAxisKey: "v",
+      seriesKey: "c",
+      columns: [
+        { key: "m", label: "Ay", format: "month", total: false },
+        { key: "c", label: "Kategori", format: "text", total: false },
+        { key: "v", label: "Ciro", format: "currency", total: true },
+      ],
+    })
+    const rows = [{ m: "2026-01", c: "A", v: 1 }, { m: "2026-01", c: "B", v: 2 }, { m: "2026-02", c: "A", v: 3 }]
+    expect(await types(p, rows)).toEqual(["bar", "line", "table"])
+  })
+})

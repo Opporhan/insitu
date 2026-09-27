@@ -31,7 +31,12 @@ const PNG_PIXEL_RATIO = 3
 export async function downloadPng(node: HTMLElement, fileName: string): Promise<void> {
   const { width, height } = node.getBoundingClientRect()
   const pixelRatio = Math.min(PNG_PIXEL_RATIO, Math.sqrt(MAX_CANVAS_PIXELS / Math.max(1, width * height)))
-  const options = { pixelRatio, backgroundColor: getComputedStyle(node).backgroundColor }
+  const options = {
+    pixelRatio,
+    backgroundColor: getComputedStyle(node).backgroundColor,
+    // UI controls inside the card (e.g. the view switcher) are marked data-export-ignore.
+    filter: (el: HTMLElement) => !(el instanceof HTMLElement && el.dataset["exportIgnore"] !== undefined),
+  }
   // Safari often drops web fonts on the first render; a warm-up pass fixes the real one.
   if (isSafari()) await toBlob(node, options)
   const blob = await toBlob(node, options)

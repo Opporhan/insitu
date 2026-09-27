@@ -70,6 +70,11 @@ const tr = {
     cancel: "Vazgeç",
     change: "Sekme değiştir",
   },
+  history: {
+    title: "Önceki cevaplar",
+    count: (n: number) => `${n} cevap`,
+    show: "Bu cevabı göster",
+  },
   prep: {
     title: "Veri hazırlama raporu ve önizleme",
     previewTitle: (n: number) => `Temizlenmiş verinin ilk ${n} satırı`,
@@ -128,6 +133,8 @@ const tr = {
         : `Yapay zekâya yalnızca sorun ve ${n} sütun adı gitti:`,
     howRan: (rows: string) => `Dönen sorgu, tarayıcında DuckDB ile ${rows} satır üzerinde çalıştı:`,
     listTotal: "Listenin toplamı",
+    viewGroup: "Görünüm",
+    views: { metric: "Özet", bar: "Çubuk", line: "Çizgi", pie: "Pasta", table: "Tablo" } as Record<string, string>,
     page: (n: number, total: number) => `Sayfa ${n}/${total}`,
     pngPages: (n: number) => `Tabloyu ${n} PNG görseli olarak indir`,
     slices: "Dilimler",
@@ -218,6 +225,11 @@ const en: Messages = {
     cancel: "Cancel",
     change: "Change sheet",
   },
+  history: {
+    title: "Earlier answers",
+    count: (n) => `${n} answer${n === 1 ? "" : "s"}`,
+    show: "Show this answer",
+  },
   prep: {
     title: "Data preparation report & preview",
     previewTitle: (n) => `First ${n} rows of the cleaned data`,
@@ -276,6 +288,8 @@ const en: Messages = {
         : `Only your question and ${n} column names were sent to the AI:`,
     howRan: (rows) => `The returned query ran in your browser with DuckDB over ${rows} rows:`,
     listTotal: "List total",
+    viewGroup: "View",
+    views: { metric: "Summary", bar: "Bar", line: "Line", pie: "Pie", table: "Table" },
     page: (n, total) => `Page ${n} of ${total}`,
     pngPages: (n) => `Download the table as ${n} PNG images`,
     slices: "Slices",

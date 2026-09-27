@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { FileSpreadsheet, MessagesSquare, RotateCcw, X } from "lucide-react"
+import { AnswerHistory } from "@/components/answer-history"
 import { AskBar } from "@/components/ask-bar"
 import { DataPrepPanel } from "@/components/data-prep-panel"
 import { Dropzone } from "@/components/dropzone"
@@ -18,11 +19,10 @@ import { resolveColumns, resolveView } from "@/lib/result-view"
 import { MAX_HISTORY, TranslateResponse, type HistoryTurn, type RepairContext, type TranslateRequest } from "@/lib/schema"
 import { suggestQuestions } from "@/lib/suggestions"
 
-type AnswerState =
-  | { kind: "idle" }
-  | { kind: "asking" }
-  | { kind: "error"; message: string; suggestions: string[] }
-  | { kind: "done"; answer: Answer }
+type AnswerState = { kind: "idle" } | { kind: "asking" } | { kind: "error"; message: string; suggestions: string[] }
+
+/** Answers kept in the session history (newest first). */
+const MAX_ANSWERS = 20
 
 const SAMPLE_URL = "/samples/satislar.csv"
 
@@ -33,6 +33,10 @@ export function InsituApp() {
   const [fileLoading, setFileLoading] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
   const [state, setState] = useState<AnswerState>({ kind: "idle" })
+  // Every answer of this file's session stays available; one is shown in full.
+  const [answers, setAnswers] = useState<Answer[]>([])
+  const [activeId, setActiveId] = useState<number | null>(null)
+  const resultRef = useRef<HTMLDivElement>(null)
   const answerCount = useRef(0)
   // Earlier questions + their SQL, so follow-ups ("and how many units?") keep the context.
   const [history, setHistory] = useState<HistoryTurn[]>([])
@@ -61,6 +65,8 @@ export function InsituApp() {
       setSourceFile(file)
       setDataset(loaded.dataset)
       setState({ kind: "idle" })
+      setAnswers([])
+      setActiveId(null)
       setHistory([])
       setPrepOpen(true)
     } catch (e) {
@@ -129,19 +135,19 @@ export function InsituApp() {
 
       const view = resolveView(plan, result.rows, result.columns, result.complete, t.insight.other)
       const resultColumns = resolveColumns(plan.columns, result.columns, result.rows)
-      setState({
-        kind: "done",
-        answer: {
-          id: ++answerCount.current,
-          question,
-          plan,
-          rows: result.rows,
-          complete: result.complete,
-          resultColumns,
-          view,
-          contextTurns: history.length,
-        },
-      })
+      const answer: Answer = {
+        id: ++answerCount.current,
+        question,
+        plan,
+        rows: result.rows,
+        complete: result.complete,
+        resultColumns,
+        view,
+        contextTurns: history.length,
+      }
+      setAnswers((prev) => [answer, ...prev].slice(0, MAX_ANSWERS))
+      setActiveId(answer.id)
+      setState({ kind: "idle" })
       setHistory([...history, { question, sql: plan.sql }].slice(-MAX_HISTORY))
       // The prep report has done its job once the user is asking questions; keep it one click away.
       setPrepOpen(false)
@@ -174,9 +180,20 @@ export function InsituApp() {
   }
 
   const busy = state.kind === "asking"
+  const active = answers.find((a) => a.id === activeId)
+
+  function showAnswer(id: number) {
+    const answer = answers.find((a) => a.id === id)
+    if (!answer) return
+    setActiveId(id)
+    // A follow-up now refers to the answer on screen, not to the most recently asked one.
+    setHistory([{ question: answer.question, sql: answer.plan.sql }])
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" }))
+  }
   const suggestions =
     // Built here (not taken from the server) so they use the file's original headers and the current language.
-    state.kind === "idle" || state.kind === "error"
+    state.kind === "error" || (state.kind === "idle" && answers.length === 0)
       ? suggestQuestions(dataset.columns, locale, new Map(dataset.report.renamedColumns.map((c) => [c.to, c.from])))
       : []
   const cleanedNotes = dataset.cleaned.map(
@@ -221,6 +238,8 @@ export function InsituApp() {
             setDataset(null)
             setState({ kind: "idle" })
             setHistory([])
+            setAnswers([])
+            setActiveId(null)
           }}
         >
           <X aria-hidden />
@@ -249,10 +268,14 @@ export function InsituApp() {
 
       {busy && <div className="h-96 animate-pulse rounded-xl border bg-card" aria-label={t.ask.computing} />}
 
-      {state.kind === "done" && (
-        // Keyed per answer so export state (e.g. "chart ready") starts fresh for every result.
-        <ResultBento key={state.answer.id} answer={state.answer} columns={dataset.columns} rowCount={dataset.rowCount} />
-      )}
+      <div ref={resultRef} className="scroll-mt-4">
+        {!busy && active && (
+          // Keyed per answer so export state (e.g. "chart ready") starts fresh for every result.
+          <ResultBento key={active.id} answer={active} columns={dataset.columns} rowCount={dataset.rowCount} />
+        )}
+      </div>
+
+      <AnswerHistory answers={answers.filter((a) => a.id !== activeId)} onSelect={showAnswer} />
     </div>
   )
 }

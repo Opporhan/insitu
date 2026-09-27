@@ -1,8 +1,8 @@
 "use client"
 
-import { memo, useCallback, useRef, useState } from "react"
+import { memo, useCallback, useMemo, useRef, useState } from "react"
 import { createPortal, flushSync } from "react-dom"
-import { Check, ChevronDown, ClipboardCopy, Code2, FileImage, FileText, Info, Sparkles } from "lucide-react"
+import { ChartColumn, ChartLine, ChartPie, Check, ChevronDown, ClipboardCopy, Code2, FileImage, FileText, Hash, Info, Sparkles, Table2 } from "lucide-react"
 import { ChartView } from "@/components/chart-view"
 import { useI18n } from "@/components/i18n-provider"
 import { MetricView } from "@/components/metric-view"
@@ -14,8 +14,12 @@ import { runQuery, MAX_EXPORT_ROWS } from "@/lib/engine/run-query"
 import { copyTable, downloadCsv, downloadPng } from "@/lib/export"
 import { formatCount } from "@/lib/format"
 import { buildInsight } from "@/lib/insight"
-import { pngPages, type ResultView } from "@/lib/result-view"
-import type { Column, OutputColumn, QueryPlan, ResultRow } from "@/lib/schema"
+import { pngPages, viewOptions, type ResultView } from "@/lib/result-view"
+import type { ChartType, Column, OutputColumn, QueryPlan, ResultRow } from "@/lib/schema"
+import { cn } from "@/lib/utils"
+
+const VIEW_ICONS: Record<ChartType, typeof ChartColumn> = { metric: Hash, bar: ChartColumn, line: ChartLine, pie: ChartPie, table: Table2 }
+const CHART_KINDS: ReadonlySet<string> = new Set(["bar", "line", "pie"])
 
 export type Answer = {
   id: number
@@ -62,16 +66,30 @@ function slug(s: string): string {
 export function ResultBento({ answer, columns, rowCount }: Props) {
   const chartRef = useRef<HTMLDivElement>(null)
   const { t, locale } = useI18n()
-  const { question, plan, rows, complete, resultColumns, view } = answer
-  // Computed per render so switching the language updates it immediately.
-  const insight = buildInsight(view, locale)
+  const { question, plan, rows, complete, resultColumns, view: plannedView } = answer
+  // Always from the planned view (a table view would only say "8 rows found"); computed per
+  // render so switching the language updates it immediately.
+  const insight = buildInsight(plannedView, locale)
+
+  // Only the views that are correct for this data (see viewOptions) are offered.
+  const options = useMemo(
+    () => viewOptions(plan, rows, resultColumns.map((c) => c.key), complete, t.insight.other),
+    [plan, rows, resultColumns, complete, t.insight.other],
+  )
+  const [viewType, setViewType] = useState<string>(plannedView.kind)
+  const view = options.find((o) => o.type === viewType)?.view ?? plannedView
   const fileName = `insitu-${slug(question)}`
   const [status, setStatus] = useState<"idle" | "exporting" | "copied" | "error">("idle")
   // Charts animate in; exporting before that would capture half-drawn bars and no value labels.
   // (A new answer remounts this component, which resets the flag.)
-  const isChart = view.kind === "bar" || view.kind === "line" || view.kind === "pie"
-  const [chartReady, setChartReady] = useState(!isChart)
+  const [chartReady, setChartReady] = useState(!CHART_KINDS.has(view.kind))
   const onChartReady = useCallback(() => setChartReady(true), [])
+
+  function switchView(type: ChartType) {
+    setViewType(type)
+    // A newly shown chart animates in again; PNG waits for it (see ChartView onReady).
+    setChartReady(!CHART_KINDS.has(type))
+  }
 
   // A table taller than its scroll box is exported as several images, one per page of rows.
   const pages = view.kind === "table" ? pngPages(view.rows.length) : [[0, 0] as [number, number]]
@@ -133,7 +151,35 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
           <CardDescription>{question}</CardDescription>
         </CardHeader>
         <CardContent>
-          <ResultBody view={view} onChartReady={onChartReady} />
+          {/* Outside the header grid: removing it from the PNG must not reflow the title/description. */}
+          {options.length > 1 && (
+            <div data-export-ignore="" className="mb-3 flex justify-end">
+              <div role="group" aria-label={t.result.viewGroup} className="flex items-center rounded-lg border p-0.5">
+                {options.map(({ type }) => {
+                  const Icon = VIEW_ICONS[type]
+                  const active = type === view.kind
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      aria-pressed={active}
+                      title={t.result.views[type]}
+                      onClick={() => switchView(type)}
+                      className={cn(
+                        "flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors duration-150 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+                        active ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      <Icon className="size-4" aria-hidden />
+                      <span className="sr-only sm:not-sr-only">{t.result.views[type]}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+          {/* Keyed by view type so a switched-to chart mounts fresh and reports when it is drawn. */}
+          <ResultBody key={view.kind} view={view} onChartReady={onChartReady} />
         </CardContent>
       </Card>
 

@@ -1,6 +1,6 @@
 import { isNumericFormat } from "@/lib/format"
 import { preciseSum } from "@/lib/math"
-import type { OutputColumn, QueryPlan, ResultRow, ResultValue } from "@/lib/schema"
+import type { ChartType, OutputColumn, QueryPlan, ResultRow, ResultValue } from "@/lib/schema"
 
 export const MAX_SERIES = 8
 export const MAX_BAR_CATEGORIES = 30
@@ -206,4 +206,43 @@ export function resolveView(
     case "table":
       return table(columns, rows)
   }
+}
+
+export type ViewOption = { type: ChartType; view: ResultView }
+
+const OPTION_ORDER: readonly ChartType[] = ["metric", "bar", "line", "pie", "table"]
+
+/**
+ * The ways this result can be shown *correctly*, for the view switcher. A type is offered
+ * only when it really renders as that type (no silent fallback to a table), and only
+ * when it makes sense for the data:
+ * - line: the x axis is a date/month (or the plan already chose line),
+ * - pie: one series of summable values (not averages/prices), or the plan chose pie,
+ * - metric: only when the planned result is a single-row metric,
+ * - table: always; for a cut-off (partial) result it is the only option.
+ */
+export function viewOptions(
+  plan: QueryPlan,
+  rows: readonly ResultRow[],
+  resultKeys: readonly string[],
+  complete = true,
+  otherLabel = OTHER_LABEL,
+): ViewOption[] {
+  const planned = resolveView(plan, rows, resultKeys, complete, otherLabel)
+  if (planned.kind === "empty") return []
+  if (!complete) return [{ type: "table", view: planned }]
+
+  const options: ViewOption[] = []
+  for (const type of OPTION_ORDER) {
+    const view = type === planned.kind ? planned : resolveView({ ...plan, chartType: type }, rows, resultKeys, complete, otherLabel)
+    if (view.kind !== type) continue
+    if (type === "metric" && planned.kind !== "metric") continue
+    if (view.kind === "line" && planned.kind !== "line" && view.x.format !== "date" && view.x.format !== "month") continue
+    if (view.kind === "pie" && planned.kind !== "pie") {
+      const single = planned.kind !== "bar" && planned.kind !== "line" ? true : planned.series.length === 1
+      if (!view.value.total || !single) continue
+    }
+    options.push({ type, view })
+  }
+  return options
 }
