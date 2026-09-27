@@ -154,7 +154,33 @@ export function InsituApp() {
       resultColumns: resolveColumns(alignPlan(plan, result.columns).columns, result.columns, result.rows, labelFor),
       view: resolveView(plan, result.rows, result.columns, result.complete, t.insight.other, labelFor),
       contextTurns,
+      edited: false,
     }
+  }
+
+  /** The user's own SQL, run locally like every query (guard + locked engine); no translator call. */
+  async function runEditedSql(base: Answer, sql: string) {
+    if (!dataset) return
+    const mine = session.current
+    setState({ kind: "asking" })
+    const plan: QueryPlan = { ...base.plan, sql }
+    const result = await runQuery(sql, undefined, [t.result.yes, t.result.no])
+    if (mine !== session.current) return
+    if (!result.ok) {
+      setState({
+        kind: "error",
+        message: /^Conversion Error/i.test(result.error) ? t.ask.notNumbers : t.result.sqlFailed,
+        suggestions: [],
+        question: base.question,
+        detail: result.error,
+      })
+      return
+    }
+    const answer = { ...toAnswer(base.question, plan, result, 0), edited: true }
+    setAnswers((prev) => [answer, ...prev].slice(0, MAX_ANSWERS))
+    setActiveId(answer.id)
+    setState({ kind: "idle" })
+    if (sql.length <= MAX_SQL_CHARS) setHistory([{ question: base.question, sql }])
   }
 
   /** Re-runs the saved plans on this file, in the browser; the translator is not called. */
@@ -189,7 +215,14 @@ export function InsituApp() {
     setState({ kind: "idle" })
   }
 
-  async function ask(question: string) {
+  /** Asks with explicit context (e.g. a drill-down on the answer on screen). */
+  async function askWith(question: string, about: Answer) {
+    const turns = about.plan.sql.length <= MAX_SQL_CHARS ? [{ question: about.question, sql: about.plan.sql }] : []
+    setHistory(turns)
+    await ask(question, turns)
+  }
+
+  async function ask(question: string, context: HistoryTurn[] = history) {
     if (!dataset) return
     pending.current?.abort()
     const controller = new AbortController()
@@ -204,7 +237,7 @@ export function InsituApp() {
     const stale = () => mine !== session.current || pending.current !== controller
     setState({ kind: "asking" })
     try {
-      await askOnce(question, controller, mine, stale, () => timedOut)
+      await askOnce(question, context, controller, mine, stale, () => timedOut)
     } finally {
       clearTimeout(timer)
       if (pending.current === controller) pending.current = null
@@ -213,6 +246,7 @@ export function InsituApp() {
 
   async function askOnce(
     question: string,
+    history: HistoryTurn[],
     controller: AbortController,
     mine: number,
     stale: () => boolean,
@@ -440,7 +474,18 @@ export function InsituApp() {
       <div ref={resultRef} className="scroll-mt-4">
         {!busy && active && (
           // Keyed per answer so export state (e.g. "chart ready") starts fresh for every result.
-          <ResultBento key={active.id} answer={active} columns={dataset.columns} rowCount={dataset.rowCount} />
+          <ResultBento
+            key={active.id}
+            answer={active}
+            columns={dataset.columns}
+            rowCount={dataset.rowCount}
+            busy={busy}
+            onRunSql={(sql) => void runEditedSql(active, sql)}
+            onDrill={(label) => {
+              // The drill-down is a follow-up on the answer on screen.
+              if (!busy) void askWith(t.suggestions.drill(label), active)
+            }}
+          />
         )}
       </div>
 

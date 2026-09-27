@@ -150,3 +150,16 @@ export async function downloadCsv(
   // BOM so Excel opens Turkish characters correctly.
   saveBlob(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }), `${fileName}.csv`)
 }
+
+/** Excel workbook with typed cells; the .xlsx writer is loaded only when asked for. */
+export async function downloadXlsx(
+  columns: readonly OutputColumn[],
+  rows: readonly ResultRow[],
+  fileName: string,
+  locale: Locale,
+  sheetName: string,
+): Promise<void> {
+  const { buildXlsx } = await import("@/lib/xlsx-export")
+  const data = buildXlsx(columns, rows, locale, sheetName)
+  saveBlob(new Blob([data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `${fileName}.xlsx`)
+}

@@ -6,7 +6,8 @@ import { TableView } from "@/components/table-view"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import type { Dataset } from "@/lib/engine/load-file"
-import { formatCount } from "@/lib/format"
+import { formatCount, formatRatio, formatValue } from "@/lib/format"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import type { ResultView } from "@/lib/result-view"
 import type { OutputColumn, ValueFormat } from "@/lib/schema"
 
@@ -44,6 +45,7 @@ export function DataPrepPanel({ dataset, open, onOpenChange }: Props) {
   if (r.droppedTotalRows.length > 0) lines.push(p.totals(r.droppedTotalRows.map((l) => `“${l}”`).join(", ")))
 
   const renamed = r.renamedColumns.filter((c) => c.from.trim() !== "" || c.to !== "")
+  const originals = new Map(r.renamedColumns.map((c) => [c.to, c.from]))
   const converted = dataset.cleaned.map((c) => {
     const kind = (t.dataset.cleanNotes as Partial<Record<string, string>>)[c.kind]
     return `${c.column}: ${[kind, c.currencyStripped ? t.dataset.currencyStripped : null].filter(Boolean).join("; ")}`
@@ -134,6 +136,50 @@ export function DataPrepPanel({ dataset, open, onOpenChange }: Props) {
                     <li key={c}>{c}</li>
                   ))}
                 </ul>
+              </div>
+            )}
+            {dataset.profile.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-muted-foreground">{p.profileTitle}</span>
+                <div className="max-h-80 overflow-auto rounded-lg border">
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-card">
+                      <TableRow>
+                        <TableHead>{p.profileCols.column}</TableHead>
+                        <TableHead>{p.profileCols.type}</TableHead>
+                        <TableHead className="text-right">{p.profileCols.filled}</TableHead>
+                        <TableHead className="text-right">{p.profileCols.distinct}</TableHead>
+                        <TableHead>{p.profileCols.values}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dataset.profile.map((c) => {
+                        const fmt = c.type === "number" ? "number" : c.type === "date" ? "date" : "text"
+                        const values =
+                          c.type === "text"
+                            ? c.top.map((v) => p.topValue(v.value, formatCount(v.count, locale))).join(" · ")
+                            : c.min !== null && c.max !== null
+                              ? p.range(formatValue(c.min, fmt, false, locale), formatValue(c.max, fmt, false, locale))
+                              : "—"
+                        return (
+                          <TableRow key={c.name}>
+                            <TableCell className="font-mono text-xs" title={originals.get(c.name) ?? c.name}>
+                              {c.name}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">{p.types[c.type]}</TableCell>
+                            <TableCell className="text-right font-mono tabular-nums">
+                              {formatRatio(dataset.rowCount > 0 ? c.filled / dataset.rowCount : 0, locale)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono tabular-nums">{formatCount(c.distinct, locale)}</TableCell>
+                            <TableCell className="max-w-[28rem] truncate" title={values}>
+                              {values}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             )}
             <div className="flex flex-col gap-1.5">

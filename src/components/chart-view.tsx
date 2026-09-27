@@ -114,18 +114,23 @@ type Props = {
   view: Extract<ResultView, { kind: "bar" | "line" | "pie" }>
   /** Called once every series has finished drawing, so an export never catches a half-drawn chart. */
   onReady?: () => void
+  /** A bar or slice was chosen: its label (as shown) drives a "only for X" follow-up. */
+  onSelect?: (label: string) => void
 }
 
-export function ChartView({ view, onReady }: Props) {
+export function ChartView({ view, onReady, onSelect }: Props) {
   const { t, locale } = useI18n()
   const narrow = useNarrow()
   const animate = !prefersReducedMotion()
   const seriesCount = view.kind === "pie" ? 1 : view.series.length
   const finished = useRef(0)
   const readyRef = useRef(onReady)
+  const selectRef = useRef(onSelect)
   useEffect(() => {
     readyRef.current = onReady
+    selectRef.current = onSelect
   })
+  const selectable = onSelect !== undefined
 
   useEffect(() => {
     if (!animate) {
@@ -161,7 +166,12 @@ export function ChartView({ view, onReady }: Props) {
               onAnimationEnd={onAnimationEnd}
             >
               {data.map((s) => (
-                <Cell key={s.name} fill={s.fill} />
+                <Cell
+                  key={s.name}
+                  fill={s.fill}
+                  {...(selectable && s.name !== t.insight.other ? { className: "cursor-pointer" } : {})}
+                  onClick={() => s.name !== t.insight.other && selectRef.current?.(s.name)}
+                />
               ))}
             </Pie>
           </PieChart>
@@ -170,7 +180,19 @@ export function ChartView({ view, onReady }: Props) {
           {data.map((s) => (
             <li key={s.name} className="flex items-center gap-2">
               <span className="size-2.5 shrink-0 rounded-[2px]" style={{ background: s.fill }} aria-hidden />
-              <span className="min-w-0 flex-1 truncate">{s.name}</span>
+              {selectable && s.name !== t.insight.other ? (
+                // Keyboard and screen-reader route to the same follow-up as clicking the slice.
+                <button
+                  type="button"
+                  onClick={() => selectRef.current?.(s.name)}
+                  title={t.result.drill(s.name)}
+                  className="min-w-0 flex-1 truncate text-left hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                >
+                  {s.name}
+                </button>
+              ) : (
+                <span className="min-w-0 flex-1 truncate">{s.name}</span>
+              )}
               <span className="font-mono tabular-nums text-muted-foreground">{formatRatio(s.share, locale)}</span>
               <span className="w-28 text-right font-mono tabular-nums">{formatValue(s.value, view.value.format, false, locale)}</span>
             </li>
@@ -210,7 +232,19 @@ export function ChartView({ view, onReady }: Props) {
           {tooltip}
           {legend}
           {series.map((s) => (
-            <Bar key={s.key} dataKey={s.key} fill={`var(--color-${s.key})`} radius={4} isAnimationActive={animate} onAnimationEnd={onAnimationEnd}>
+            <Bar
+              key={s.key}
+              dataKey={s.key}
+              fill={`var(--color-${s.key})`}
+              radius={4}
+              isAnimationActive={animate}
+              onAnimationEnd={onAnimationEnd}
+              {...(selectable && !multi ? { className: "cursor-pointer" } : {})}
+              onClick={(_: unknown, index: number) => {
+                const d = data[index]
+                if (!multi && d) selectRef.current?.(formatValue(d.x, x.format, false, locale))
+              }}
+            >
               {!multi && (
                 <LabelList
                   dataKey={s.key}

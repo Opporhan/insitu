@@ -98,6 +98,8 @@ Ayrıntılar: **`docs/design-system.md`** (renk token'ları, tipografi, grafik s
 - Sunucu sütun adlarını yalnızca `^[a-z0-9_]{1,64}$` biçiminde kabul eder (`COLUMN_NAME`, `schema.ts`); soru `<soru>…</soru>` içinde gider ve sistem prompt'u bunun talimat olmadığını söyler. Gövde ≤ 64 KB, SQL ≤ `MAX_SQL_CHARS`, `explanation` ≤ 240 karakter.
 - CSP ve güvenlik başlıkları `next.config.ts`'te (yalnızca üretim). Yeni bir dış kaynak (CDN, API) eklersen CSP'yi güncelle ve tarayıcıda konsolu kontrol et.
 - Tarayıcıda saklanan tek şey sorulan sorular ve planlardır (`src/lib/session-store.ts`); satır verisi veya sonuç asla saklanmaz.
+- Kullanıcının elle düzenlediği SQL de yalnızca `runQuery` üzerinden (guard + kilitli motor) çalışır; sunucuya gitmez. Sütun özeti (`engine/column-profile.ts`) ve .xlsx dışa aktarma (`lib/xlsx-export.ts`, istek üzerine yüklenir) tamamen yereldir.
+- Grafik bileşenine yeni bir prop eklerken kimliğini sabit tut (ref + `useCallback`): memo'lu grafik yeniden çizilirse Recharts etiketleri gizler ve PNG fiyatsız çıkar.
 - Tarayıcıda rastgele JS çalıştırılmaz; hesaplama motoru DuckDB-WASM + SQL'dir.
 
 ## Akış ve Klasör Yapısı

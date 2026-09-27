@@ -1,8 +1,25 @@
 "use client"
 
-import { memo, useCallback, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal, flushSync } from "react-dom"
-import { ChartColumn, ChartLine, ChartPie, Check, ChevronDown, ClipboardCopy, Code2, FileImage, FileText, Hash, Info, Sparkles, Table2 } from "lucide-react"
+import {
+  ChartColumn,
+  ChartLine,
+  ChartPie,
+  Check,
+  ChevronDown,
+  ClipboardCopy,
+  Code2,
+  FileImage,
+  FileSpreadsheet,
+  FileText,
+  Hash,
+  Info,
+  Pencil,
+  Play,
+  Sparkles,
+  Table2,
+} from "lucide-react"
 import { ChartView } from "@/components/chart-view"
 import { useI18n } from "@/components/i18n-provider"
 import { MetricView } from "@/components/metric-view"
@@ -11,7 +28,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { runQuery, MAX_EXPORT_ROWS } from "@/lib/engine/run-query"
-import { copyTable, downloadCsv, downloadPng } from "@/lib/export"
+import { copyTable, downloadCsv, downloadPng, downloadXlsx } from "@/lib/export"
 import { formatCount } from "@/lib/format"
 import { buildInsight } from "@/lib/insight"
 import { pngPages, viewOptions, type ResultView } from "@/lib/result-view"
@@ -34,13 +51,23 @@ export type Answer = {
   contextTurns: number
   resultColumns: OutputColumn[]
   view: ResultView
+  /** The user edited the SQL and ran it again (no translator involved). */
+  edited: boolean
 }
 
 /**
  * Memoized so export-button state changes never re-render the chart: Recharts hides
  * value labels while it re-animates, and a PNG taken in that window had no prices.
  */
-const ResultBody = memo(function ResultBody({ view, onChartReady }: { view: ResultView; onChartReady: () => void }) {
+const ResultBody = memo(function ResultBody({
+  view,
+  onChartReady,
+  onSelect,
+}: {
+  view: ResultView
+  onChartReady: () => void
+  onSelect: (label: string) => void
+}) {
   const { t } = useI18n()
   switch (view.kind) {
     case "empty":
@@ -50,7 +77,8 @@ const ResultBody = memo(function ResultBody({ view, onChartReady }: { view: Resu
     case "table":
       return <TableView view={view} />
     default:
-      return <ChartView view={view} onReady={onChartReady} />
+      // Drill-down makes sense for categories (bar, pie), not for points on a time line.
+      return <ChartView view={view} onReady={onChartReady} {...(view.kind === "line" ? {} : { onSelect })} />
   }
 })
 
@@ -58,13 +86,19 @@ type Props = {
   answer: Answer
   columns: readonly Column[]
   rowCount: number
+  /** Runs an edited query on this file (guarded like every query). */
+  onRunSql: (sql: string) => void
+  /** Asks the follow-up "only for <label>". */
+  onDrill: (label: string) => void
+  busy: boolean
 }
 
 function slug(s: string, locale: string): string {
   return s.toLocaleLowerCase(locale).replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 48) || "insitu"
 }
 
-export function ResultBento({ answer, columns, rowCount }: Props) {
+export function ResultBento({ answer, columns, rowCount, onRunSql, onDrill, busy }: Props) {
+  const [draft, setDraft] = useState<string | null>(null)
   const chartRef = useRef<HTMLDivElement>(null)
   const { t, locale } = useI18n()
   const { question, plan, rows, complete, resultColumns, view: plannedView } = answer
@@ -85,6 +119,12 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
   // (A new answer remounts this component, which resets the flag.)
   const [chartReady, setChartReady] = useState(!CHART_KINDS.has(view.kind))
   const onChartReady = useCallback(() => setChartReady(true), [])
+  // Stable identity: a new callback would re-render the memoized chart and re-run its animation.
+  const drillRef = useRef(onDrill)
+  useEffect(() => {
+    drillRef.current = onDrill
+  })
+  const onSelect = useCallback((label: string) => drillRef.current(label), [])
 
   function switchView(type: ChartType) {
     setViewType(type)
@@ -149,7 +189,10 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
       <Card ref={chartRef} className="md:col-span-2 md:self-start">
         <CardHeader>
           <CardTitle className="text-lg tracking-tight">{plan.title}</CardTitle>
-          <CardDescription>{question}</CardDescription>
+          <CardDescription>
+            {question}
+            {answer.edited ? ` · ${t.result.editedMark}` : ""}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {/* Outside the header grid: removing it from the PNG must not reflow the title/description. */}
@@ -180,7 +223,7 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
             </div>
           )}
           {/* Keyed by view type so a switched-to chart mounts fresh and reports when it is drawn. */}
-          <ResultBody key={view.kind} view={view} onChartReady={onChartReady} />
+          <ResultBody key={view.kind} view={view} onChartReady={onChartReady} onSelect={onSelect} />
         </CardContent>
       </Card>
 
@@ -245,6 +288,19 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
               className="col-span-2 h-11"
               disabled={rows.length === 0 || status === "exporting"}
               onClick={() =>
+                void run(async () => {
+                  const all = await exportRows()
+                  await downloadXlsx(resultColumns, all.rows, fileName + all.suffix, locale, plan.title)
+                })
+              }
+            >
+              <FileSpreadsheet aria-hidden /> Excel (.xlsx)
+            </Button>
+            <Button
+              variant="outline"
+              className="col-span-2 h-11"
+              disabled={rows.length === 0 || status === "exporting"}
+              onClick={() =>
                 void run(() => copyTable(resultColumns, exportRows().then((all) => all.rows), locale), "copied")
               }
             >
@@ -278,9 +334,44 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
                   ))}
                 </ul>
                 <p className="text-muted-foreground">{t.result.howRan(formatCount(rowCount, locale))}</p>
-                <pre className="rounded-lg border bg-background p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap">
-                  {plan.sql}
-                </pre>
+                {draft === null ? (
+                  <>
+                    <pre className="rounded-lg border bg-background p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap">
+                      {plan.sql}
+                    </pre>
+                    <Button variant="outline" className="h-11 self-start" disabled={busy} onClick={() => setDraft(plan.sql)}>
+                      <Pencil aria-hidden /> {t.result.editSql}
+                    </Button>
+                  </>
+                ) : (
+                  <form
+                    className="flex flex-col gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      if (draft.trim()) onRunSql(draft.trim())
+                    }}
+                  >
+                    <label htmlFor={`sql-${answer.id}`} className="text-muted-foreground">
+                      {t.result.editHint}
+                    </label>
+                    <textarea
+                      id={`sql-${answer.id}`}
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      rows={Math.min(14, Math.max(5, draft.split("\n").length + 1))}
+                      spellCheck={false}
+                      className="rounded-lg border bg-background p-3 font-mono text-xs leading-relaxed focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                    />
+                    <div className="flex gap-2">
+                      <Button type="submit" className="h-11" disabled={busy || !draft.trim()}>
+                        <Play aria-hidden /> {t.result.runSql}
+                      </Button>
+                      <Button type="button" variant="ghost" className="h-11" onClick={() => setDraft(null)}>
+                        {t.ask.cancel}
+                      </Button>
+                    </div>
+                  </form>
+                )}
               </CardContent>
             </CollapsibleContent>
           </Collapsible>

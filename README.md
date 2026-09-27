@@ -55,6 +55,13 @@ PDFs are read **entirely in the browser**; the file is never uploaded and the AI
 
 When a requested concept isn't in the table, the closest column is used and a note says so (e.g. "grouped by district: no province column").
 
+## Working with answers
+
+- **Column summary:** after loading, every column's type, filled share, distinct values, range and most frequent values (computed in the browser).
+- **Drill down:** click a bar or a pie slice (or its legend entry) to ask "show the details for X only".
+- **Edit the SQL:** in "How did I calculate this?", edit the query and run it again on the file — locally, through the same guard; nothing goes to the AI.
+- **Downloads:** PNG (long tables split into pages), CSV, **Excel (.xlsx)** with real number and date cells, or copy the table.
+
 ## Follow-up questions
 
 After "show the top 3 products this month", questions like "and how many units?", "what about last month?" or "only card payments" keep the earlier scope (period, filters, selected items). For this, only the **text and SQL** of the last 3 questions are sent to the AI — never their results. "New topic" clears the context.
@@ -112,6 +119,8 @@ npm run dev                                    # http://localhost:3000
 3. Deploy. The Hobby plan is free for personal projects.
 
 > **Quota protection:** `/api/translate` is limited to 10 requests per IP per minute (`src/lib/rate-limit.ts`). The limit is kept in memory, so on Vercel each server instance counts separately — set a quota on the key in Google AI Studio for a hard cap.
+>
+> **Daily cap across all instances (optional):** add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` (free Upstash Redis) and optionally `INSITU_DAILY_LIMIT` (default 2000). Valid requests are then counted per UTC day and refused beyond the limit. Without these variables nothing changes.
 
 ## Project structure
 

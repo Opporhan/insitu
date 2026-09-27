@@ -55,6 +55,13 @@ PDF'ler **tamamen tarayıcıda** okunur; dosya hiçbir yere yüklenmez, yapay ze
 
 Tabloda istenen kavram yoksa en yakın sütun kullanılır ve açıkça not düşülür (ör. "Veride il bulunmadığından ilçe bazlı gruplandı").
 
+## Cevaplarla çalışmak
+
+- **Sütun özeti:** Yüklemeden sonra her sütunun türü, doluluk oranı, farklı değer sayısı, aralığı ve en sık değerleri (tarayıcıda hesaplanır).
+- **Detaya inme:** Bir çubuğa veya pasta dilimine (ya da açıklamasına) tıklayınca "bunu sadece X için ayrıntılı göster" sorulur.
+- **SQL'i düzenleme:** "Bu analizi nasıl hesapladım?" bölümünde sorguyu düzenleyip dosya üzerinde yeniden çalıştırabilirsin — yerelde, aynı güvenlik denetiminden geçerek; yapay zekâya bir şey gitmez.
+- **İndirme:** PNG (uzun tablolar sayfalara bölünür), CSV, gerçek sayı ve tarih hücreli **Excel (.xlsx)** ya da tabloyu panoya kopyalama.
+
 ## Takip soruları
 
 "Bu ay en çok satan 3 ürünü göster" dedikten sonra "ve kaç adet satılmış?", "peki geçen ay?" veya "sadece kredi kartı ile ödenenler" gibi sorular önceki sorunun kapsamını (dönem, filtreler, seçilen kalemler) koruyarak cevaplanır. Bunun için yapay zekâya son 3 sorunun yalnızca **metni ve SQL'i** gider; sonuçları asla gitmez. "Yeni konu" ile bağlam sıfırlanır.
@@ -112,6 +119,8 @@ npm run dev                                     # http://localhost:3000
 3. Yayınla. Hobby planı kişisel projeler için ücretsizdir.
 
 > **Kota koruması:** `/api/translate` IP başına dakikada 10 istekle sınırlıdır (`src/lib/rate-limit.ts`). Sınır bellekte tutulur; Vercel'de her sunucu örneği ayrı sayar. Bu nedenle kesin bir üst sınır için Google AI Studio'da anahtara ayrıca kota koy.
+>
+> **Tüm sunucular için günlük tavan (isteğe bağlı):** `UPSTASH_REDIS_REST_URL` ve `UPSTASH_REDIS_REST_TOKEN` (ücretsiz Upstash Redis) ile isteğe bağlı `INSITU_DAILY_LIMIT` (varsayılan 2000) ekle. Geçerli istekler UTC gününe göre sayılır, sınırı aşanlar reddedilir. Bu değişkenler yoksa hiçbir şey değişmez.
 
 ## Proje yapısı
 

@@ -1,6 +1,7 @@
 import { extension, type IngestReport, type PdfProgress, type SheetInfo } from "@/lib/ingest"
 import { ResultRow, type Column, type ColumnType } from "@/lib/schema"
 import { buildCleanTableSql, decideColumn, profileColumns, type CleanKind } from "./clean"
+import { profileTable, type ColumnSummary } from "./column-profile"
 import { freshDb } from "./duckdb"
 import { normalizeSql } from "./normalize"
 import type { PrepareRequest, PrepareResponse, PreparedTable } from "./prepare"
@@ -19,6 +20,8 @@ export type Dataset = {
   report: IngestReport
   /** First rows of the cleaned table, for the data preview. */
   preview: ResultRow[]
+  /** Per-column summary (filled, distinct, range, most frequent values), computed locally. */
+  profile: ColumnSummary[]
 }
 
 export type LoadResult = { kind: "sheets"; sheets: SheetInfo[] } | { kind: "dataset"; dataset: Dataset }
@@ -119,12 +122,18 @@ export async function loadFile(file: File, sheet?: string, onProgress: (p: PdfPr
     const preview = normalized.ok
       ? (await conn.query(normalized.sql)).toArray().map((r) => ResultRow.parse(r.toJSON()))
       : []
+    const columns = described.map((c) => ({ name: c.column_name, type: toColumnType(c.column_type) }))
+    const profile = await profileTable(
+      async (sql) => (await conn.query(sql)).toArray().map((r) => r.toJSON() as Record<string, unknown>),
+      "data",
+      columns,
+    )
     return {
       kind: "dataset",
       dataset: {
         fileName: file.name,
         rowCount: counted[0]?.n ?? 0,
-        columns: described.map((c) => ({ name: c.column_name, type: toColumnType(c.column_type) })),
+        columns,
         cleaned: decisions.flatMap((d) =>
           d.converted ? [{ column: d.name, kind: d.kind, currencyStripped: d.currencyStripped }] : [],
         ),
@@ -132,6 +141,7 @@ export async function loadFile(file: File, sheet?: string, onProgress: (p: PdfPr
         ambiguous: decisions.flatMap((d) => (d.ambiguous ? [d.name] : [])),
         report: prepared.report,
         preview,
+        profile,
       },
     }
   } finally {
