@@ -60,6 +60,12 @@ export function selectItems(sql: string): SelectItem[] {
 const MONEY_NAME = /(tutar|ciro|fiyat|gelir|maliyet|gider|bakiye|borc|alacak|price|revenue|amount|cost|income|balance)/
 const NOT_MONEY = /(adet|miktar|sayi|sayisi|count|qty|quantity|oran|yuzde|percent|rate)/
 
+/** A column whose name clearly means money ("tutar", "birim_fiyat", "ciro"), never a quantity. */
+export function isMoneyName(name: string): boolean {
+  const n = name.toLowerCase()
+  return MONEY_NAME.test(n) && !NOT_MONEY.test(n)
+}
+
 const AGG = /^\s*(sum|avg|mean|min|max|median|count)\s*\(/i
 
 /** Display format for an output column of a hand-edited query, or null when nothing is known. */
@@ -75,8 +81,7 @@ export function inferFormat(item: SelectItem, known: ReadonlyMap<string, ValueFo
     const format = knownFormat === "integer" && fn === "avg" ? "number" : knownFormat
     return { format, total: summable && format !== "percent" }
   }
-  const name = source.toLowerCase()
-  if (MONEY_NAME.test(name) && !NOT_MONEY.test(name)) return { format: "currency", total: summable }
+  if (isMoneyName(source)) return { format: "currency", total: summable }
   return null
 }
 

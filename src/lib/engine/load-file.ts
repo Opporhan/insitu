@@ -2,6 +2,7 @@ import { extension, type IngestReport, type PdfProgress, type SheetInfo } from "
 import { ResultRow, type Column, type ColumnType } from "@/lib/schema"
 import { buildCleanTableSql, decideColumn, profileColumns, type CleanKind } from "./clean"
 import { profileTable, type ColumnSummary } from "./column-profile"
+import { computeOverview, type Overview } from "./overview"
 import { freshDb } from "./duckdb"
 import { normalizeSql } from "./normalize"
 import type { PrepareRequest, PrepareResponse, PreparedTable } from "./prepare"
@@ -22,6 +23,8 @@ export type Dataset = {
   preview: ResultRow[]
   /** Per-column summary (filled, distinct, range, most frequent values), computed locally. */
   profile: ColumnSummary[]
+  /** First-look findings and warnings, computed locally before any question. */
+  overview: Overview
 }
 
 export type LoadResult = { kind: "sheets"; sheets: SheetInfo[] } | { kind: "dataset"; dataset: Dataset }
@@ -123,11 +126,9 @@ export async function loadFile(file: File, sheet?: string, onProgress: (p: PdfPr
       ? (await conn.query(normalized.sql)).toArray().map((r) => ResultRow.parse(r.toJSON()))
       : []
     const columns = described.map((c) => ({ name: c.column_name, type: toColumnType(c.column_type) }))
-    const profile = await profileTable(
-      async (sql) => (await conn.query(sql)).toArray().map((r) => r.toJSON() as Record<string, unknown>),
-      "data",
-      columns,
-    )
+    const rowsOf = async (sql: string) => (await conn.query(sql)).toArray().map((r) => r.toJSON() as Record<string, unknown>)
+    const profile = await profileTable(rowsOf, "data", columns)
+    const overview = await computeOverview(rowsOf, "data", columns, profile)
     return {
       kind: "dataset",
       dataset: {
@@ -142,6 +143,7 @@ export async function loadFile(file: File, sheet?: string, onProgress: (p: PdfPr
         report: prepared.report,
         preview,
         profile,
+        overview,
       },
     }
   } finally {

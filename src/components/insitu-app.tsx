@@ -5,6 +5,7 @@ import { FileSpreadsheet, History, Layers, MessagesSquare, RotateCcw, X } from "
 import { AnswerHistory } from "@/components/answer-history"
 import { AskBar } from "@/components/ask-bar"
 import { DataPrepPanel } from "@/components/data-prep-panel"
+import { OverviewPanel } from "@/components/overview-panel"
 import { Dropzone } from "@/components/dropzone"
 import { useI18n } from "@/components/i18n-provider"
 import { ResultBento, type Answer } from "@/components/result-bento"
@@ -65,6 +66,7 @@ export function InsituApp() {
   const [sheetChoice, setSheetChoice] = useState<{ file: File; sheets: SheetInfo[] } | null>(null)
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [prepOpen, setPrepOpen] = useState(true)
+  const [overviewOpen, setOverviewOpen] = useState(true)
   // Questions saved for this file in an earlier visit, offered for restoring (never auto-run).
   const [saved, setSaved] = useState<SavedQuestion[]>([])
   const [restoring, setRestoring] = useState(false)
@@ -107,7 +109,11 @@ export function InsituApp() {
       setAnswers([])
       setActiveId(null)
       setHistory([])
-      setPrepOpen(true)
+      // The first look leads; the prep report opens by itself only when a column needs attention.
+      const d2 = loaded.dataset
+      const hasOverview = d2.overview.findings.length + d2.overview.warnings.length > 0
+      setOverviewOpen(true)
+      setPrepOpen(!hasOverview || d2.unreadable.length > 0 || d2.ambiguous.length > 0)
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e)
       setFileError(t.file.readFailed(t.file.codes[detail] ?? detail))
@@ -305,8 +311,9 @@ export function InsituApp() {
       setState({ kind: "idle" })
       // An unusually long query is not kept as context (the server caps SQL length).
       setHistory([...history, { question, sql: plan.sql }].filter((h) => h.sql.length <= MAX_SQL_CHARS).slice(-MAX_HISTORY))
-      // The prep report has done its job once the user is asking questions; keep it one click away.
+      // The prep report and first look have done their job once the user is asking questions; keep them one click away.
       setPrepOpen(false)
+      setOverviewOpen(false)
       return
     }
   }
@@ -466,6 +473,8 @@ export function InsituApp() {
           </Button>
         </div>
       )}
+
+      <OverviewPanel dataset={dataset} open={overviewOpen} onOpenChange={setOverviewOpen} busy={busy} onAsk={(q) => void ask(q)} />
 
       <DataPrepPanel dataset={dataset} open={prepOpen} onOpenChange={setPrepOpen} />
 
