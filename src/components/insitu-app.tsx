@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { FileSpreadsheet, History, Layers, MessagesSquare, RotateCcw, X } from "lucide-react"
+import { Check, Copy, FileSpreadsheet, History, Layers, Link2, MessagesSquare, RotateCcw, Share2, X } from "lucide-react"
 import { AnswerHistory } from "@/components/answer-history"
 import { AskBar } from "@/components/ask-bar"
 import { DataPrepPanel } from "@/components/data-prep-panel"
@@ -27,6 +27,7 @@ import {
 } from "@/lib/schema"
 import { buildInsight } from "@/lib/insight"
 import { loadSaved, MAX_SAVED, saveQuestions, sessionKey, type SavedQuestion } from "@/lib/session-store"
+import { decodeShare, encodeShare, SHARE_KEY } from "@/lib/share"
 import { followUpQuestions, readableLabel, suggestQuestions } from "@/lib/suggestions"
 import type { QueryPlan } from "@/lib/schema"
 import { QUERY_TIMEOUT, runQuery, type QueryResult } from "@/lib/engine/run-query"
@@ -84,8 +85,26 @@ export function InsituApp() {
     saveQuestions(storageKey, [...current, ...saved.filter((q) => !seen.has(q.question))].slice(0, MAX_SAVED))
   }, [storageKey, answers, saved])
 
+  // Analyses from a share link ("#analiz=…"): questions and plans only, run on the user's own file.
+  const [shared, setShared] = useState<SavedQuestion[]>([])
+  const [sharedNote, setSharedNote] = useState<string | null>(null)
+  const [shareLink, setShareLink] = useState<{ url: string; copied: boolean } | null>(null)
+
   // Fetch and start the in-browser engine while the user is still choosing a file.
   useEffect(() => prewarmDb(), [])
+
+  useEffect(() => {
+    if (!window.location.hash.startsWith(`#${SHARE_KEY}=`)) return
+    const fragment = window.location.hash
+    // Out of the address bar, so a reload or a copied URL does not import it again.
+    window.history.replaceState(null, "", window.location.pathname + window.location.search)
+    void decodeShare(fragment).then((items) => {
+      if (items) setShared(items)
+      else setSharedNote(t.share.invalid)
+    })
+    // Once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function openFile(file: File, sheet?: string) {
     if (!isAccepted(file.name)) {
@@ -117,6 +136,7 @@ export function InsituApp() {
       const hasOverview = d2.overview.findings.length + d2.overview.warnings.length > 0
       setOverviewOpen(true)
       setReport([])
+      setShareLink(null)
       setPrepOpen(!hasOverview || d2.unreadable.length > 0 || d2.ambiguous.length > 0)
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e)
@@ -192,24 +212,64 @@ export function InsituApp() {
     if (sql.length <= MAX_SQL_CHARS) setHistory([{ question: base.question, sql }])
   }
 
-  /** Re-runs the saved plans on this file, in the browser; the translator is not called. */
-  async function restoreSaved() {
+  /**
+   * Runs saved or shared plans on this file, in the browser; the translator is not called.
+   * Returns how many could not run here (e.g. a shared analysis about other columns).
+   */
+  async function runPlans(list: readonly SavedQuestion[]): Promise<number | null> {
     const mine = session.current
     setRestoring(true)
     const restored: Answer[] = []
-    for (const q of [...saved].reverse()) {
+    let failed = 0
+    for (const q of [...list].reverse()) {
       const result = await runQuery(q.plan.sql, undefined, [t.result.yes, t.result.no])
-      if (mine !== session.current) return
+      if (mine !== session.current) return null
       if (result.ok) restored.unshift(toAnswer(q.question, q.plan, result, 0))
+      else failed++
     }
-    setSaved([])
     setRestoring(false)
     const seen = new Set(answers.map((a) => a.question))
-    const merged = [...answers, ...restored.filter((a) => !seen.has(a.question))].slice(0, MAX_ANSWERS)
+    const merged = [...restored.filter((a) => !seen.has(a.question)), ...answers].slice(0, MAX_ANSWERS)
     setAnswers(merged)
     const first = merged[0]
-    if (activeId === null && first) setActiveId(first.id)
+    if (first) setActiveId(first.id)
     setPrepOpen(false)
+    setOverviewOpen(false)
+    return failed
+  }
+
+  async function restoreSaved() {
+    const list = saved
+    setSaved([])
+    await runPlans(list)
+  }
+
+  async function runShared() {
+    const list = shared
+    setShared([])
+    const failed = await runPlans(list)
+    if (failed === null) return
+    setSharedNote(
+      failed === 0 ? t.share.allRan(list.length) : failed === list.length ? t.share.noneRan(failed) : t.share.someFailed(list.length - failed, failed),
+    )
+  }
+
+  async function createShareLink() {
+    const items = answers.map((a) => ({ question: a.question, plan: a.plan }))
+    try {
+      const url = `${window.location.origin}${window.location.pathname}${await encodeShare(items)}`
+      let copied = false
+      try {
+        await navigator.clipboard.writeText(url)
+        copied = true
+      } catch {
+        // Clipboard blocked: the link is shown to copy by hand.
+      }
+      setShareLink({ url, copied })
+    } catch {
+      setShareLink(null)
+      setSharedNote(t.share.tooLarge)
+    }
   }
 
   function dismissSaved() {
@@ -341,6 +401,12 @@ export function InsituApp() {
           <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">{t.hero.title}</h1>
           <p className="mx-auto max-w-[60ch] text-base text-pretty text-muted-foreground">{t.hero.body}</p>
         </div>
+        {(shared.length > 0 || sharedNote) && (
+          <p role="status" className="flex items-start gap-2 rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground">
+            <Link2 className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+            {shared.length > 0 ? t.share.incoming(shared.length) : sharedNote}
+          </p>
+        )}
         <Dropzone loading={fileLoading} progress={progress} error={fileError} onFile={(file) => void openFile(file)} onSample={openSample} />
       </div>
     )
@@ -412,6 +478,19 @@ export function InsituApp() {
             <span className="hidden sm:inline">{sheetLabel}</span>
           </Button>
         )}
+        {answers.length > 0 && (
+          <Button
+            variant="ghost"
+            className="h-11 min-w-11 shrink-0 px-3 text-xs"
+            disabled={busy}
+            aria-label={t.share.buttonHint}
+            title={t.share.buttonHint}
+            onClick={() => void createShareLink()}
+          >
+            <Share2 aria-hidden />
+            <span className="hidden sm:inline">{t.share.button}</span>
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon-lg"
@@ -470,6 +549,65 @@ export function InsituApp() {
               <code className="block rounded-md border bg-background p-2 font-mono break-all">{state.detail}</code>
             </details>
           )}
+        </div>
+      )}
+
+      {shared.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground">
+          <Link2 className="size-4 shrink-0 text-primary" aria-hidden />
+          <span className="min-w-0 flex-1">{t.share.offer(shared.length)}</span>
+          <Button variant="outline" size="sm" className="h-11 px-3" disabled={busy || restoring} onClick={() => void runShared()}>
+            {restoring ? t.session.restoring : t.share.run}
+          </Button>
+          <Button variant="ghost" size="sm" className="h-11 px-3" disabled={restoring} onClick={() => setShared([])}>
+            {t.session.dismiss}
+          </Button>
+        </div>
+      )}
+
+      {sharedNote && (
+        <div role="status" className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground">
+          <Link2 className="size-4 shrink-0 text-primary" aria-hidden />
+          <span className="min-w-0 flex-1">{sharedNote}</span>
+          <Button variant="ghost" size="sm" className="h-11 px-3" onClick={() => setSharedNote(null)}>
+            {t.share.dismiss}
+          </Button>
+        </div>
+      )}
+
+      {shareLink && (
+        <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2">
+            <Share2 className="size-4 shrink-0 text-primary" aria-hidden />
+            <span className="min-w-0 flex-1" aria-live="polite">
+              {shareLink.copied ? t.share.copied : t.share.copyManually}
+            </span>
+            <Button variant="ghost" size="sm" className="h-11 px-3" onClick={() => setShareLink(null)}>
+              {t.share.dismiss}
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <input
+              readOnly
+              value={shareLink.url}
+              aria-label={t.share.copyManually}
+              onFocus={(e) => e.currentTarget.select()}
+              className="h-11 min-w-0 flex-1 rounded-md border bg-background px-3 font-mono text-xs"
+            />
+            <Button
+              variant="outline"
+              className="h-11 px-3"
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(shareLink.url)
+                  .then(() => setShareLink({ ...shareLink, copied: true }))
+                  .catch(() => {})
+              }
+            >
+              {shareLink.copied ? <Check aria-hidden /> : <Copy aria-hidden />} {t.share.copy}
+            </Button>
+          </div>
+          <p className="text-xs">{t.share.explain}</p>
         </div>
       )}
 
