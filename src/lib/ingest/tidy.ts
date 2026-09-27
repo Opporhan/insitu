@@ -45,6 +45,10 @@ function isValueLike(cell: string): boolean {
   return NUMBER_LIKE.test(cell) || DATE_LIKE.test(cell)
 }
 
+/** A year is a header in pivot layouts ("Ürün | 2023 | 2024 | 2025"). */
+const YEAR = /^(19|20)\d{2}$/
+const isHeaderText = (cell: string) => YEAR.test(cell) || !isValueLike(cell)
+
 const filled = (row: readonly Cell[]) => row.filter((c) => c !== null).length
 
 /**
@@ -60,7 +64,7 @@ export function detectHeaderRow(matrix: Matrix, width: number): number {
     const row = matrix[r] ?? []
     const cells = row.filter((c): c is string => c !== null)
     if (cells.length < Math.min(2, width)) continue
-    const textShare = cells.filter((c) => !isValueLike(c)).length / cells.length
+    const textShare = cells.filter(isHeaderText).length / cells.length
     if (textShare < 0.5) continue
     const unique = new Set(cells.map((c) => fold(c))).size / cells.length
     const next = matrix.slice(r + 1, r + 6).filter((x) => filled(x) > 0)
@@ -80,12 +84,18 @@ const TOTAL_LABELS = new Set([
   "total", "totals", "grand total", "sub total", "subtotal", "sum", "average", "avg", "mean",
 ])
 
-/** A summary row: its first filled cell is only a total/average keyword (optionally with ":"). */
+/**
+ * A summary row: its first filled cell is only a total/average keyword (optionally with ":"),
+ * and every other filled cell is a number. A data row that merely starts with such a word —
+ * "Total" is also a fuel brand — has other text (city, product) and is kept.
+ */
 export function isTotalRow(row: readonly Cell[]): string | null {
-  const first = row.find((c): c is string => c !== null)
+  const filled = row.filter((c): c is string => c !== null)
+  const [first, ...rest] = filled
   if (!first) return null
   const key = fold(first).replace(/[:.\s]+$/, "").replace(/\s+/g, " ")
-  return TOTAL_LABELS.has(key) ? first : null
+  if (!TOTAL_LABELS.has(key)) return null
+  return rest.every(isValueLike) ? first : null
 }
 
 /** DuckDB-safe snake_case name: Turkish letters folded, emoji/brackets/symbols removed. */
@@ -160,10 +170,13 @@ export function tidyMatrix(input: Matrix): TidyTable {
   rows = rows.map((r) => r.filter((_, c) => keep[c]))
   const keptHeader = headerCells.filter((_, c) => keep[c])
 
-  // 4. Ghost rows: more than 90% of the remaining cells empty.
+  // 4. Ghost rows: more than 90% of the remaining cells empty and no number or date in them
+  //    (a stray note or section label). A sparse row that still carries a value is data.
   const cols = keptHeader.length
   const before = rows.length
-  rows = rows.filter((r) => cols === 0 || 1 - filled(r) / cols <= GHOST_EMPTY_SHARE)
+  rows = rows.filter(
+    (r) => cols === 0 || 1 - filled(r) / cols <= GHOST_EMPTY_SHARE || r.some((c) => c !== null && isValueLike(c)),
+  )
   droppedEmptyRows += before - rows.length
 
   const { names, renamed } = uniqueNames(keptHeader)

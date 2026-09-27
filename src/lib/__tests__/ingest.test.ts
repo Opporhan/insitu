@@ -140,3 +140,81 @@ describe("tidy rules", () => {
     expect(detectHeaderRow(m, 3)).toBe(1)
   })
 })
+
+describe("Excel details", () => {
+  it("fills merged ranges, keeps hidden rows, skips hidden sheets and reads 1904 dates, times and tiny numbers", async () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Şehir", "Ürün", "Tutar", "Saat", "Oran"],
+      ["İstanbul", "Çay", 100, 0.5, 0.0000001],
+      [null, "Kahve", 200, 0.75, 0.5],
+      ["Ankara", "Su", 50, 0.25, 0.25],
+    ])
+    ws["!merges"] = [{ s: { r: 1, c: 0 }, e: { r: 2, c: 0 } }]
+    ws["!rows"] = [{}, {}, { hidden: true }, {}]
+    for (const r of [2, 3, 4]) {
+      const cell = ws[`D${r}`]
+      if (cell) cell.z = "hh:mm"
+    }
+    const dates = XLSX.utils.aoa_to_sheet([["Tarih"], [0], [365]])
+    for (const r of [2, 3]) {
+      const cell = dates[`A${r}`]
+      if (cell) cell.z = "dd.mm.yyyy"
+    }
+    const hidden = XLSX.utils.aoa_to_sheet([["gizli"], [1]])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Satış")
+    XLSX.utils.book_append_sheet(wb, hidden, "Yardımcı")
+    wb.Workbook = { Sheets: [{ Hidden: 0 }, { Hidden: 1 }], WBProps: { date1904: true } }
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer
+
+    const res = await ingest("r.xlsx", buf)
+    if (res.kind !== "table") throw new Error("hidden sheet should not force a sheet choice")
+    expect(res.report.filledMergedCells).toBe(1)
+    expect(res.report.hiddenRows).toBe(1)
+    const lines = res.csv.split("\r\n")
+    expect(lines[2]).toMatch(/^İstanbul,Kahve,200,18:00:00,0.5$/)
+    expect(lines[1]).toBe("İstanbul,Çay,100,12:00:00,0.0000001")
+
+    const wb2 = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb2, dates, "T")
+    wb2.Workbook = { WBProps: { date1904: true } }
+    const res2 = await ingest("d.xlsx", XLSX.write(wb2, { type: "array", bookType: "xlsx" }) as ArrayBuffer)
+    if (res2.kind !== "table") throw new Error("expected table")
+    expect(res2.csv.split("\r\n").slice(1)).toEqual(["1904-01-01", "1904-12-31"])
+  })
+})
+
+describe("tidy edge cases", () => {
+  it("keeps a data row that starts with 'Total' (a brand) but drops a real total row", () => {
+    const t = tidyMatrix([
+      ["Marka", "Şehir", "Litre"],
+      ["Total", "İzmir", "120"],
+      ["Shell", "Ankara", "80"],
+      ["TOPLAM", null, "200"],
+    ])
+    expect(t.rows.map((r) => r[0])).toEqual(["Total", "Shell"])
+    expect(t.report.droppedTotalRows).toEqual(["TOPLAM"])
+  })
+
+  it("keeps a sparse row that still has a value in a wide table", () => {
+    const header = Array.from({ length: 12 }, (_, i) => `k${i}`)
+    const full = header.map((_, i) => String(i))
+    const sparse: (string | null)[] = header.map(() => null)
+    sparse[3] = "42"
+    const note: (string | null)[] = header.map(() => null)
+    note[0] = "Not: veriler geçicidir"
+    const t = tidyMatrix([header, full, sparse, note])
+    expect(t.rows).toHaveLength(2)
+  })
+
+  it("finds a pivot header made of years", () => {
+    const t = tidyMatrix([
+      ["Satış Raporu"],
+      ["Ürün", "2023", "2024", "2025"],
+      ["Çay", "10", "12", "15"],
+      ["Kahve", "20", "22", "25"],
+    ])
+    expect(t.report.headerRow).toBe(2)
+    expect(t.header).toEqual(["urun", "kolon_2023", "kolon_2024", "kolon_2025"])
+  })
+})

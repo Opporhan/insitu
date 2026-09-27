@@ -16,13 +16,56 @@ const NULL_TOKENS = [
 ]
 const MONEY_NOISE = "(₺|TL|TRY|USD|EUR|\\$|€|%|\\s)"
 
-// Time part shared by all date layouts.
-const TIME = "( \\d{1,2}:\\d{2}(:\\d{2}(\\.\\d+)?)?)?"
-const ISO_RE = `\\d{4}-\\d{1,2}-\\d{1,2}([ T]\\d{1,2}:\\d{2}(:\\d{2}(\\.\\d+)?)?)?`
-const DMY_RE = `\\d{1,2}\\.\\d{1,2}\\.\\d{4}${TIME}`
-const ISO_FORMATS = ["%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]
-const DMY_FORMATS = ["%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M", "%d.%m.%Y"]
-const MDY_FORMATS = ["%m.%d.%Y %H:%M:%S", "%m.%d.%Y %H:%M", "%m.%d.%Y"]
+// Time part shared by all date layouts (optionally with fractions of a second and AM/PM).
+const TIME = "( \\d{1,2}:\\d{2}(:\\d{2}(\\.\\d+)?)?( ?[AaPp][Mm])?)?"
+/** Full dates, or year-month only ("2025-01" = that month). */
+const ISO_RE = `\\d{4}-\\d{1,2}(-\\d{1,2}${TIME})?`
+/** Four-digit years, or zero-padded two-digit ones ("05.01.25"; "1.2.3" stays a version number). */
+const DMY_RE = `(\\d{1,2}\\.\\d{1,2}\\.\\d{4}|\\d{2}\\.\\d{2}\\.\\d{2})${TIME}`
+const withTimes = (date: string) => [
+  `${date} %H:%M:%S.%f`,
+  `${date} %H:%M:%S`,
+  `${date} %H:%M`,
+  `${date} %I:%M:%S %p`,
+  `${date} %I:%M %p`,
+  `${date} %I:%M:%S%p`,
+  `${date} %I:%M%p`,
+  date,
+]
+const ISO_FORMATS = [...withTimes("%Y-%m-%d"), "%Y-%m"]
+const DMY_FORMATS = withTimes("%d.%m.%Y")
+const MDY_FORMATS = withTimes("%m.%d.%Y")
+
+/** Month names in Turkish and English (full and short, with or without Turkish letters). */
+const MONTHS = [
+  "ocak|oca|january|jan",
+  "[şs]ubat|[şs]ub|february|feb",
+  "mart|mar|march",
+  "nisan|nis|april|apr",
+  "may[ıi]s|may",
+  "haziran|haz|june|jun",
+  "temmuz|tem|july|jul",
+  "a[ğg]ustos|a[ğg]u|august|aug",
+  "eyl[üu]l|eyl|september|sept|sep",
+  "ek[iı]m|eki|october|oct",
+  "kas[ıi]m|kas|november|nov",
+  "aral[ıi]k|ara|december|dec",
+] as const
+
+/**
+ * "5 Ocak 2025", "05 Oca. 2025 14:30", "January 5, 2025" → "5.01.2025…", so named months go
+ * through the same day-first parser. Only values that start like a named date take this path.
+ */
+function monthNamesOf(x: string): string {
+  // "İ" lower-cases to "i" + a combining dot in Unicode; fold it first so "EKİM" matches.
+  let out = `lower(replace(${x}, 'İ', 'i'))`
+  MONTHS.forEach((names, i) => {
+    const mm = String(i + 1).padStart(2, "0")
+    out = `regexp_replace(${out}, '^(\\d{1,2})\\.?\\s+(${names})\\.?,?\\s+(\\d{4})(.*)$', '\\1.${mm}.\\3\\4')`
+    out = `regexp_replace(${out}, '^(${names})\\.?\\s+(\\d{1,2}),?\\s+(\\d{4})(.*)$', '\\2.${mm}.\\3\\4')`
+  })
+  return `CASE WHEN regexp_matches(${x}, '^[0-9]{1,2}\\.?\\s+\\pL|^\\pL+\\.?\\s+[0-9]') THEN ${out} ELSE ${x} END`
+}
 
 /** Up to 18 digits: longer "numbers" (card numbers, long IDs) do not fit BIGINT and stay text. */
 const INT_RE = "[-+]?\\d{1,18}"
@@ -59,15 +102,26 @@ function moneyExpr(col: string): string {
   return signExpr(`regexp_replace(${valueExpr(col)}, '${MONEY_NOISE}', '', 'gi')`)
 }
 
-/** "05/01/2025" or "05-01-2025" → "05.01.2025". Only the date part is touched. */
-function dottedExpr(col: string): string {
-  return `regexp_replace(${valueExpr(col)}, '^(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4})', '\\1.\\2.\\3')`
+/** "05/01/2025", "05-01-25" or "5 Ocak 2025" → "05.01.2025". Only the date part is touched. */
+function dottedOf(x: string): string {
+  const dotted = `regexp_replace(${monthNamesOf(x)}, '^(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4}|\\d{2})', '\\1.\\2.\\3')`
+  // Two-digit years like spreadsheets write them: 00–69 → 2000s, 70–99 → 1900s.
+  const century = `regexp_replace(regexp_replace(${dotted}, '^(\\d{2}\\.\\d{2}\\.)([0-6]\\d)($|\\s)', '\\120\\2\\3'), '^(\\d{2}\\.\\d{2}\\.)([7-9]\\d)($|\\s)', '\\119\\2\\3')`
+  return `upper(${century})`
 }
 
-/** "2025/01/05" or "2025.01.05" → "2025-01-05". Only the date part is touched. */
-function dashedExpr(col: string): string {
-  return `regexp_replace(${valueExpr(col)}, '^(\\d{4})[./-](\\d{1,2})[./-](\\d{1,2})', '\\1-\\2-\\3')`
+/**
+ * "2025/01/05" or "2025.01.05" → "2025-01-05"; ISO "T" becomes a space and a trailing zone
+ * ("Z", "+03:00") is dropped: times are kept as written, never shifted between time zones.
+ */
+function dashedOf(x: string): string {
+  // Year-month only with "-" or "/": "2024.5" is a decimal number, not May 2024.
+  const dashed = `regexp_replace(regexp_replace(${x}, '^(\\d{4})[./-](\\d{1,2})[./-](\\d{1,2})', '\\1-\\2-\\3'), '^(\\d{4})/(\\d{1,2})$', '\\1-\\2')`
+  return `regexp_replace(regexp_replace(${dashed}, '^(\\d{4}-\\d{1,2}-\\d{1,2})T', '\\1 '), '(:\\d{2}(\\.\\d+)?)(Z|[+-]\\d{2}:?\\d{2})$', '\\1')`
 }
+
+const dottedExpr = (col: string) => dottedOf(valueExpr(col))
+const dashedExpr = (col: string) => dashedOf(valueExpr(col))
 
 const PROFILE_FIELDS = [
   "n", "int", "lead0", "dot", "amb", "tr", "usk", "ambComma", "commaDec", "stripped", "isoShape", "dmyShape", "iso", "dmy", "mdy", "time", "fracDot", "fracComma",
@@ -88,8 +142,8 @@ export function profileSql(table: string, columns: readonly string[]): string {
         v,
         `${signExpr(`regexp_replace(${v}, '${MONEY_NOISE}', '', 'gi')`)} AS m${i}`,
         `regexp_replace(${v}, '${MONEY_NOISE}', '', 'gi') AS s${i}`,
-        `regexp_replace(${v}, '^(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4})', '\\1.\\2.\\3') AS dt${i}`,
-        `regexp_replace(${v}, '^(\\d{4})[./-](\\d{1,2})[./-](\\d{1,2})', '\\1-\\2-\\3') AS ds${i}`,
+        `${dottedOf(v)} AS dt${i}`,
+        `${dashedOf(v)} AS ds${i}`,
       ].join(", ")
     })
     .join(", ")

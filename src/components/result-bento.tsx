@@ -123,7 +123,7 @@ export function ResultBento({ answer, columns, rowCount }: Props) {
   function exportRows(): Promise<{ rows: ResultRow[]; suffix: string }> {
     if (complete) return Promise.resolve({ rows, suffix: "" })
     // Fetched once and reused, so CSV then copy does not run the full query twice.
-    fullRows.current ??= runQuery(plan.sql, MAX_EXPORT_ROWS).then((full) => {
+    fullRows.current ??= runQuery(plan.sql, MAX_EXPORT_ROWS, [t.result.yes, t.result.no]).then((full) => {
       if (!full.ok) throw new Error(full.error)
       return { rows: full.rows, suffix: full.complete ? "" : t.result.firstRowsSuffix(MAX_EXPORT_ROWS) }
     })

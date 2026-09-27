@@ -75,6 +75,43 @@ describe("load-time cleaning (real DuckDB)", () => {
     expect(data.map((r) => r["oran"])).toEqual([null, null, 12, null])
   })
 
+  it("reads ISO timestamps with T and a zone as written (no time-zone shift)", async () => {
+    const { kinds, data } = await clean({ t: ["2025-01-05T10:30:00Z", "2025-02-06T08:00:00+03:00", "2025-03-07T23:59:59.250Z"] })
+    expect(kinds["t"]).toBe("iso-date")
+    expect(data.map((r) => r["t"])).toEqual(["2025-01-05T10:30:00.000Z", "2025-02-06T08:00:00.000Z", "2025-03-07T23:59:59.250Z"])
+  })
+
+  it("reads year-month values as the first day of the month, but not decimals", async () => {
+    expect((await clean({ ay: ["2025-01", "2025-02", "2025/03"] })).data.map((r) => r["ay"])).toEqual([
+      "2025-01-01T00:00:00.000Z",
+      "2025-02-01T00:00:00.000Z",
+      "2025-03-01T00:00:00.000Z",
+    ])
+    expect((await clean({ oran: ["2024.5", "2023.7", "2022.1"] })).kinds["oran"]).toBe("decimal")
+  })
+
+  it("reads Turkish and English month names and two-digit years", async () => {
+    const named = await clean({ t: ["5 Ocak 2025", "12 Şubat 2025", "3 AĞUSTOS 2025", "1 EKİM 2025", "20 Kas. 2025 14:30", "January 7, 2025"] })
+    expect(named.kinds["t"]).toBe("dmy-date")
+    expect(named.data.map((r) => String(r["t"]).slice(0, 16))).toEqual([
+      "2025-01-05T00:00",
+      "2025-02-12T00:00",
+      "2025-08-03T00:00",
+      "2025-10-01T00:00",
+      "2025-11-20T14:30",
+      "2025-01-07T00:00",
+    ])
+    const short = await clean({ t: ["05.01.25", "31.12.24"] })
+    expect(short.data.map((r) => String(r["t"]).slice(0, 10))).toEqual(["2025-01-05", "2024-12-31"])
+    // Version numbers are not dates.
+    expect((await clean({ v: ["1.2.3", "1.10.2", "2.0.1"] })).kinds["v"]).toBe("text")
+  })
+
+  it("reads fractions of a second and AM/PM times", async () => {
+    const { data } = await clean({ t: ["05.01.2025 14:30:15.250", "06.01.2025 2:05 PM", "07.01.2025 9:00 am"] })
+    expect(data.map((r) => String(r["t"]).slice(0, 23))).toEqual(["2025-01-05T14:30:15.250", "2025-01-06T14:05:00.000", "2025-01-07T09:00:00.000"])
+  })
+
   it("treats an all-'1.250' column as Turkish thousands, not 1.25", async () => {
     const { kinds, data } = await clean({ fiyat: ["1.250", "2.500", "12.000"] })
     expect(kinds["fiyat"]).toBe("tr-number")

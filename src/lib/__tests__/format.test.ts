@@ -57,3 +57,10 @@ describe("formatValue (English)", () => {
     expect(formatValue("2026-02", "month", true, "en")).toBe("Feb 26")
   })
 })
+
+describe("date values with a time", () => {
+  it("keep the time unless it is midnight", () => {
+    expect(formatValue("2025-01-05 14:30", "date")).toMatch(/2025 14:30$/)
+    expect(formatValue("2025-01-05 00:00", "date")).not.toMatch(/00:00/)
+  })
+})

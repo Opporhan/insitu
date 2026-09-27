@@ -1,5 +1,5 @@
 import { decodeText, type TextEncodingName } from "./decode"
-import { listSheets, parseDelimited, readWorkbook, sheetMatrix, type SheetInfo } from "./sources"
+import { listSheets, parseDelimited, readSheet, readWorkbook, type SheetInfo } from "./sources"
 import { tidyMatrix, toCsvText, type TidyReport } from "./tidy"
 import type { PdfProgress } from "./pdf"
 
@@ -36,6 +36,9 @@ export type IngestReport = TidyReport & {
   sheet: string | null
   sheets: SheetInfo[]
   pdf: PdfReport | null
+  /** Excel only: merged cells filled in and hidden rows kept (both 0 otherwise). */
+  filledMergedCells: number
+  hiddenRows: number
 }
 
 type Table = { csv: string; report: IngestReport }
@@ -67,12 +70,23 @@ export async function ingest(
     if (sheet === undefined && sheets.length > 1) return { kind: "sheets", sheets, tables: null }
     const chosen = sheets.find((s) => s.name === sheet) ?? sheets[0]
     if (!chosen) throw new Error("no-sheet")
-    const table = tidyMatrix(sheetMatrix(workbook, chosen.name))
+    const sheetRead = readSheet(workbook, chosen.name)
+    const table = tidyMatrix(sheetRead.matrix)
     if (table.header.length === 0) throw new Error("no-columns")
     return {
       kind: "table",
       csv: toCsvText(table),
-      report: { ...table.report, source: "excel", encoding: null, delimiter: null, sheet: chosen.name, sheets, pdf: null },
+      report: {
+        ...table.report,
+        source: "excel",
+        encoding: null,
+        delimiter: null,
+        sheet: chosen.name,
+        sheets,
+        pdf: null,
+        filledMergedCells: sheetRead.filledMergedCells,
+        hiddenRows: sheetRead.hiddenRows,
+      },
     }
   }
 
@@ -83,7 +97,7 @@ export async function ingest(
   return {
     kind: "table",
     csv: toCsvText(table),
-    report: { ...table.report, source: "csv", encoding, delimiter, sheet: null, sheets: [], pdf: null },
+    report: { ...table.report, source: "csv", encoding, delimiter, sheet: null, sheets: [], pdf: null, filledMergedCells: 0, hiddenRows: 0 },
   }
 }
 
@@ -117,6 +131,8 @@ async function ingestPdf(data: ArrayBuffer, sheet: string | undefined, onProgres
         delimiter: null,
         sheet: prepared.length > 1 ? name : null,
         sheets: prepared.length > 1 ? sheets : [],
+        filledMergedCells: 0,
+        hiddenRows: 0,
         pdf: {
           pages: pdf.pages,
           tablePages: pages,

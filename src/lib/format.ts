@@ -60,14 +60,16 @@ function formatNumber(n: number, format: ValueFormat, short: boolean, locale: Lo
 }
 
 function formatDateText(s: string, format: "date" | "month", short: boolean, locale: Locale): string {
-  const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?/.exec(s)
+  const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?(?:[ T](\d{2}):(\d{2}))?/.exec(s)
   if (!m) return s
-  const [, y, mo, d] = m
+  const [, y, mo, d, hh, mm] = m
   const date = new Date(Date.UTC(Number(y), Number(mo) - 1, d === undefined ? 1 : Number(d)))
   if (Number.isNaN(date.getTime())) return s
   const f = FORMATTERS[locale]
   if (format === "month" || d === undefined) return (short ? f.monthShort : f.monthLong).format(date)
-  return f.day.format(date)
+  // Hourly values keep their time, so 09:00 and 17:00 of the same day stay distinct.
+  const time = hh !== undefined && mm !== undefined && `${hh}:${mm}` !== "00:00" ? ` ${hh}:${mm}` : ""
+  return f.day.format(date) + time
 }
 
 /**

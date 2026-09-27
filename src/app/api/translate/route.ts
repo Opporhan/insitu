@@ -1,4 +1,5 @@
 import { messages, requestLocale } from "@/lib/i18n"
+import { checkDailyBudget } from "@/lib/daily-budget"
 import { clientIp, createRateLimiter } from "@/lib/rate-limit"
 import { TranslateRequest, type TranslateResponse } from "@/lib/schema"
 import { translator } from "@/lib/translator"
@@ -50,6 +51,14 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(
       { ok: false, error: messages[headerLocale].server.invalid, suggestions: [] } satisfies TranslateResponse,
       { status: 400 },
+    )
+  }
+  // Counted only for valid requests, right before the paid call.
+  const budget = await checkDailyBudget()
+  if (!budget.ok) {
+    return Response.json(
+      { ok: false, error: messages[headerLocale].server.dailyLimit, suggestions: [] } satisfies TranslateResponse,
+      { status: 429, headers: { "Retry-After": String(budget.retryAfterSec) } },
     )
   }
   return Response.json(await translator.translate(parsed.data))

@@ -163,7 +163,7 @@ export function InsituApp() {
     setRestoring(true)
     const restored: Answer[] = []
     for (const q of [...saved].reverse()) {
-      const result = await runQuery(q.plan.sql)
+      const result = await runQuery(q.plan.sql, undefined, [t.result.yes, t.result.no])
       if (mine !== session.current) return
       if (result.ok) restored.unshift(toAnswer(q.question, q.plan, result, 0))
     }
@@ -246,7 +246,7 @@ export function InsituApp() {
       if (!translated.ok) return fail(translated.error, translated.suggestions)
 
       const plan = translated.plan
-      const result = await runQuery(plan.sql)
+      const result = await runQuery(plan.sql, undefined, [t.result.yes, t.result.no])
       if (stale()) return
       if (!result.ok) {
         if (attempt === 0 && result.repairable && plan.sql.length <= MAX_SQL_CHARS) {

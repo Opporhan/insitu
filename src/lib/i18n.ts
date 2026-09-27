@@ -116,6 +116,8 @@ const tr = {
       `Taranmış ${checked} sayı/tarih iki farklı okumayla karşılaştırıldı${corrected > 0 ? `; ${corrected} tanesi, rakam modunda yapılan ek okumaların çoğunluğuyla düzeltildi` : ""}`,
     ocrUncertain: (n: number) =>
       `${n} değer okumalar uyuşmadığı için “(?)” ile işaretlendi; bu değerlerin sütunuyla hesap yapılmaz. Orijinal PDF'e bakıp düzeltilmiş bir kopya yükleyebilirsin.`,
+    mergedCells: (n: number) => `Birleştirilmiş hücreler açıldı: ${n} boş hücre, birleştirilen değerle dolduruldu`,
+    hiddenRows: (n: number) => `Excel'de gizlenmiş veya filtrelenmiş ${n} satır da dahil edildi (Excel'in TOPLA işlevi gibi)`,
     pageFurniture: (n: number) => `${n} sayfa üst/alt bilgisi satırı (sayfa numarası, rapor başlığı) atıldı`,
     repeatedHeaders: (n: number) => `Her sayfada tekrarlanan ${n} başlık satırı atıldı`,
     wrappedRows: (n: number) => `Alt satıra taşan ${n} hücre metni üstündeki satırla birleştirildi`,
@@ -186,6 +188,8 @@ const tr = {
     howRan: (rows: string) => `Dönen sorgu, tarayıcında DuckDB ile ${rows} satır üzerinde çalıştı:`,
     listTotal: "Listenin toplamı",
     sortBy: "sıralamak için tıkla",
+    yes: "Evet",
+    no: "Hayır",
     // File-name suffix when an export stops at the row cap.
     firstRowsSuffix: (n: number) => `-ilk-${n}`,
     viewGroup: "Görünüm",
@@ -238,6 +242,7 @@ const tr = {
   },
   server: {
     rateLimited: (seconds: number) => `Çok fazla soru gönderildi. Lütfen ${seconds} saniye sonra tekrar dene.`,
+    dailyLimit: "Sitenin bugünkü soru kotası doldu. Yarın tekrar deneyebilirsin; kendi kopyanı kurmak için README'ye bak.",
     invalid: "Geçersiz istek.",
     quota: "Yapay zekâ kullanım kotası doldu. Yaklaşık bir dakika sonra tekrar dene.",
     unavailable: "Yapay zekâ şu an yanıt veremedi, birazdan tekrar dene.",
@@ -327,6 +332,8 @@ const en: Messages = {
       `${checked} scanned numbers/dates cross-checked with two independent readings${corrected > 0 ? `; ${corrected} fixed by a majority of extra digits-only readings` : ""}`,
     ocrUncertain: (n) =>
       `${n} value${n === 1 ? "" : "s"} marked “(?)” because the readings disagreed; no calculation uses ${n === 1 ? "its" : "their"} column. Check the original PDF and upload a corrected copy.`,
+    mergedCells: (n) => `Merged cells unmerged: ${n} empty cell${n === 1 ? "" : "s"} filled with the merged value`,
+    hiddenRows: (n) => `${n} row${n === 1 ? "" : "s"} hidden or filtered out in Excel ${n === 1 ? "is" : "are"} included (as Excel's SUM does)`,
     pageFurniture: (n) => `${n} page header/footer line${n === 1 ? "" : "s"} (page numbers, report titles) removed`,
     repeatedHeaders: (n) => `${n} header row${n === 1 ? "" : "s"} repeated on each page removed`,
     wrappedRows: (n) => `${n} cell${n === 1 ? "" : "s"} wrapped onto the next line joined with the row above`,
@@ -397,6 +404,8 @@ const en: Messages = {
     howRan: (rows) => `The returned query ran in your browser with DuckDB over ${rows} rows:`,
     listTotal: "List total",
     sortBy: "click to sort",
+    yes: "Yes",
+    no: "No",
     firstRowsSuffix: (n) => `-first-${n}`,
     viewGroup: "View",
     views: { metric: "Summary", bar: "Bar", line: "Line", pie: "Pie", table: "Table" },
@@ -442,6 +451,7 @@ const en: Messages = {
   },
   server: {
     rateLimited: (seconds) => `Too many questions. Please try again in ${seconds} seconds.`,
+    dailyLimit: "This site's question quota for today is used up. Try again tomorrow, or see the README to run your own copy.",
     invalid: "Invalid request.",
     quota: "The AI usage quota is exhausted. Please try again in about a minute.",
     unavailable: "The AI couldn't respond right now, please try again shortly.",

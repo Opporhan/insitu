@@ -33,6 +33,8 @@ export function DataPrepPanel({ dataset, open, onOpenChange }: Props) {
   if (pdf && pdf.skippedOcrPages > 0) lines.push(p.ocrSkipped(pdf.skippedOcrPages))
   if (pdf && pdf.checkedCells > 0) lines.push(p.ocrChecked(pdf.checkedCells, pdf.correctedCells))
   if (pdf && pdf.droppedPageFurniture > 0) lines.push(p.pageFurniture(pdf.droppedPageFurniture))
+  if (r.filledMergedCells > 0) lines.push(p.mergedCells(r.filledMergedCells))
+  if (r.hiddenRows > 0) lines.push(p.hiddenRows(r.hiddenRows))
   lines.push(r.headerRow > 0 ? p.header(r.headerRow) : p.noHeader)
   if (r.droppedRepeatedHeaders > 0) lines.push(p.repeatedHeaders(r.droppedRepeatedHeaders))
   if (pdf && pdf.mergedWrappedRows > 0) lines.push(p.wrappedRows(pdf.mergedWrappedRows))
@@ -52,6 +54,8 @@ export function DataPrepPanel({ dataset, open, onOpenChange }: Props) {
     r.droppedEmptyColumns +
     r.droppedTotalRows.length +
     r.droppedRepeatedHeaders +
+    r.filledMergedCells +
+    r.hiddenRows +
     (pdf ? pdf.droppedPageFurniture + pdf.mergedWrappedRows + pdf.ocrPages : 0)
 
   const columns: OutputColumn[] = dataset.columns.map((c) => ({ key: c.name, label: c.name, format: FORMAT[c.type] ?? "text", total: false }))
