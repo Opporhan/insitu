@@ -22,6 +22,11 @@ describe("joinSuggestion", () => {
     const targets = { columns: [{ name: "sehir", type: "text" as const }, { name: "hedef_tl", type: "number" as const }], originals: new Map([["hedef_tl", "Hedef (TL)"]]) }
     expect(joinSuggestion(sales, [targets], "tr")).toBe("Şehir bazında toplam tutar ve toplam hedef karşılaştırması")
   })
+  it("is readable in English too", () => {
+    const targets = { columns: [{ name: "sehir", type: "text" as const }, { name: "hedef_tl", type: "number" as const }], originals: new Map([["hedef_tl", "Hedef (TL)"]]) }
+    expect(joinSuggestion(sales, [targets], "en")).toBe("Compare total amount and total target by city")
+  })
+
   it("offers nothing without a shared key", () => {
     const staff = { columns: [{ name: "ad", type: "text" as const }, { name: "maas", type: "number" as const }], originals: new Map() }
     expect(joinSuggestion(sales, [staff], "tr")).toBeNull()

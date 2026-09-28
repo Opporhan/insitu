@@ -56,6 +56,9 @@ const VOCAB: Record<string, { tr: string; en: string }> = {
   cinsiyet: { tr: "cinsiyet", en: "gender" }, kanal: { tr: "kanal", en: "channel" }, kampanya: { tr: "kampanya", en: "campaign" },
   toplam: { tr: "toplam", en: "total" }, net: { tr: "net", en: "net" }, brut: { tr: "brüt", en: "gross" },
   kdv: { tr: "KDV", en: "VAT" }, maas: { tr: "maaş", en: "salary" }, prim: { tr: "prim", en: "bonus" },
+  hedef: { tr: "hedef", en: "target" }, hedefi: { tr: "hedefi", en: "target" }, butce: { tr: "bütçe", en: "budget" },
+  ay: { tr: "ay", en: "month" }, yil: { tr: "yıl", en: "year" }, donem: { tr: "dönem", en: "period" },
+  gerceklesen: { tr: "gerçekleşen", en: "actual" }, plan: { tr: "plan", en: "plan" }, kota: { tr: "kota", en: "quota" },
 }
 
 /**
