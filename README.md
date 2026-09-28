@@ -6,11 +6,11 @@
 
 **Talk to your table.** Drop a CSV, Excel or PDF file, ask the way you'd ask a colleague, and get a presentation-ready chart plus a one-sentence insight in seconds. Your data never leaves your device.
 
-![Insitu demo](docs/demo.gif)
+![Insitu demo](docs/demo-en.gif)
 
 > *In situ* — Latin for "in its original place". Every computation runs in the user's own browser.
 
-**Live demo:** [insitu-five.vercel.app](https://insitu-five.vercel.app)
+**Live demo:** [insitu-five.vercel.app](https://insitu-five.vercel.app) · [Privacy](https://insitu-five.vercel.app/gizlilik)
 
 ## How it works
 
