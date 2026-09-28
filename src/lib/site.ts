@@ -7,3 +7,5 @@ export const SITE_URL = process.env["VERCEL_PROJECT_PRODUCTION_URL"]
   : "http://localhost:3000"
 
 export const SITE_NAME = "Insitu"
+
+export const REPO_URL = "https://github.com/Opporhan/insitu"

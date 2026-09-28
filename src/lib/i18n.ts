@@ -99,6 +99,50 @@ const tr = {
     cancel: "Vazgeç",
     change: "Sekme değiştir",
   },
+  privacy: {
+    title: "Gizlilik",
+    metaTitle: "Gizlilik — Insitu",
+    intro: "Insitu, verin cihazından çıkmadan analiz edebilmen için tasarlandı. Neyin nerede işlendiğini aşağıda açıkça yazıyoruz.",
+    sections: [
+      {
+        title: "Dosyan ve satırların",
+        body: [
+          "CSV, Excel ve PDF dosyaların tarayıcında açılır ve hesaplanır (DuckDB-WASM). Dosya hiçbir sunucuya yüklenmez.",
+          "Tablodaki satırlar, değerler ve sonuçlar hiçbir zaman yapay zekâya veya başka bir sunucuya gönderilmez. İçgörü cümleleri ve rapor da tarayıcında, gerçek sonuçtan hesaplanır.",
+        ],
+      },
+      {
+        title: "Yapay zekâya ne gidiyor?",
+        body: [
+          "Sorunu SQL'e çevirmek için yalnızca şunlar Google Gemini API'ye gönderilir: soru metnin, sütun adları ve türleri (sayı, metin, tarih); takip sorularında önceki soruların metni ve üretilen SQL; birden fazla tablo varsa tablo adları.",
+          "Ücretsiz Gemini API'de Google gönderilen içeriği ürünlerini geliştirmek için kullanabilir. Bu yüzden soru metnine kişisel veya gizli bilgi yazma; sütun adları da gizli bilgi içeriyorsa dikkatli ol.",
+        ],
+      },
+      {
+        title: "Tarayıcında saklananlar",
+        body: [
+          "Dil ve tema tercihin (çerez ve tarayıcı depolaması), bir dosya için sorduğun sorular ve üretilen planlar (dosyayı yeniden açınca geri yükleyebilmen için) ve internetsiz çalışma için uygulamanın kodu. Veri, satır veya sonuç saklanmaz.",
+          "Bunları tarayıcının site verilerini temizleyerek istediğin zaman silebilirsin.",
+        ],
+      },
+      {
+        title: "Paylaşım ve bağlantıdan açma",
+        body: [
+          "Paylaşım bağlantısı yalnızca soruları ve sorguları içerir; veri içermez. Bağlantının bu kısmı (# sonrası) tarayıcılar tarafından sunuculara gönderilmez.",
+          "Google Sheets veya GitHub bağlantısından açtığın dosya doğrudan o kaynaktan tarayıcına iner; Insitu sunucusundan geçmez.",
+        ],
+      },
+      {
+        title: "Sunucu kayıtları ve çerezler",
+        body: [
+          "Reklam, analitik veya izleme çerezi kullanılmaz. Barındırma sağlayıcısı (Vercel) standart erişim kayıtları tutar; kötüye kullanımı önlemek için IP adresin bir dakikalığına bellekte sayılır.",
+          "Insitu açık kaynaktır; nasıl çalıştığını GitHub'da inceleyebilirsin.",
+        ],
+      },
+    ],
+    back: "Uygulamaya dön",
+    source: "Kaynak kodu (GitHub)",
+  },
   tables: {
     add: "Tablo ekle",
     addHint: "Başka bir dosyayı ayrı bir tablo olarak ekle (ör. hedefler); sorular iki tabloyu birlikte kullanabilir",
@@ -421,6 +465,50 @@ const en: Messages = {
     size: (rows, columns) => `${rows} filled rows · ${columns} columns`,
     cancel: "Cancel",
     change: "Change sheet",
+  },
+  privacy: {
+    title: "Privacy",
+    metaTitle: "Privacy — Insitu",
+    intro: "Insitu is built so you can analyze your data without it leaving your device. Here is exactly what is processed where.",
+    sections: [
+      {
+        title: "Your file and its rows",
+        body: [
+          "CSV, Excel and PDF files are opened and computed in your browser (DuckDB-WASM). The file is never uploaded to a server.",
+          "Rows, values and results are never sent to the AI or any other server. Insight sentences and reports are computed in your browser from the real result.",
+        ],
+      },
+      {
+        title: "What goes to the AI?",
+        body: [
+          "To translate your question into SQL, only this is sent to the Google Gemini API: your question, the column names and types (number, text, date); for follow-ups, the earlier questions and the generated SQL; with several tables, their names.",
+          "On the free Gemini API, Google may use submitted content to improve its products. So don't put personal or confidential information in the question, and take care if column names themselves are confidential.",
+        ],
+      },
+      {
+        title: "Stored in your browser",
+        body: [
+          "Your language and theme preference (cookie and browser storage), the questions you asked about a file and their generated plans (so you can restore them when you reopen it), and the app's code for offline use. No data, rows or results are stored.",
+          "You can remove all of this at any time by clearing the site's data in your browser.",
+        ],
+      },
+      {
+        title: "Sharing and opening from a link",
+        body: [
+          "A share link contains only questions and queries, no data. That part of the link (after #) is never sent to servers by browsers.",
+          "A file opened from a Google Sheets or GitHub link downloads straight from that source into your browser, not through Insitu's server.",
+        ],
+      },
+      {
+        title: "Server logs and cookies",
+        body: [
+          "No advertising, analytics or tracking cookies are used. The host (Vercel) keeps standard access logs; your IP address is counted in memory for one minute to prevent abuse.",
+          "Insitu is open source; you can review how it works on GitHub.",
+        ],
+      },
+    ],
+    back: "Back to the app",
+    source: "Source code (GitHub)",
   },
   tables: {
     add: "Add table",

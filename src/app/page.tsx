@@ -1,4 +1,5 @@
 import { InsituApp } from "@/components/insitu-app"
+import { SiteFooter } from "@/components/site-footer"
 import { SiteHeader } from "@/components/site-header"
 
 export default function Home() {
@@ -8,6 +9,7 @@ export default function Home() {
       <main className="flex flex-1 flex-col justify-center py-12">
         <InsituApp />
       </main>
+      <SiteFooter />
     </div>
   )
 }

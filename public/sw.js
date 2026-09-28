@@ -36,12 +36,14 @@ self.addEventListener("activate", (event) => {
 
 async function networkFirstPage(request) {
   const cache = await caches.open(APP)
+  // The app page under one key (it is the same for any query string); other pages by URL.
+  const key = new URL(request.url).pathname === "/" ? PAGE_KEY : request
   try {
     const response = await fetch(request)
-    if (response.ok) await cache.put(PAGE_KEY, response.clone())
+    if (response.ok) await cache.put(key, response.clone())
     return response
   } catch {
-    const cached = await cache.match(PAGE_KEY)
+    const cached = (await cache.match(key)) || (await cache.match(PAGE_KEY))
     if (cached) return cached
     throw new Error("offline and no cached page")
   }
